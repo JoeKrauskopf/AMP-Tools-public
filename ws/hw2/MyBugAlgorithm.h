@@ -13,4 +13,7 @@ class MyBugAlgorithm : public amp::BugAlgorithm {
     
     private:
         // Add any member variables here...
+        Eigen::Vector2d q_H; // Hit point
+        Eigen::Vector2d q_L; // Leave point
+        bool followingObstacle = false; // flag to check if in obstacle following mode
 };
