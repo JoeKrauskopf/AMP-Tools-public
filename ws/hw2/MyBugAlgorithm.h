@@ -14,8 +14,16 @@ class MyBugAlgorithm : public amp::BugAlgorithm {
         // Add any other methods here...
         
     
-    private:
-        // Add any member variables here...
+     private:
+        
+        Eigen::Vector2d getNextBoundaryPoint(const Eigen::Vector2d& current, 
+                                        const Eigen::Vector2d& previous,
+                                        const amp::Problem2D& problem,
+                                        collision& coll,
+                                        double safeDist,
+                                        double stepSize);
+    
+        // Member variables
         Eigen::MatrixXd q_L;  // N×2 matrix
         Eigen::MatrixXd q_H;  // N×2 matrix
         Eigen::MatrixXd Q; // Nx2 matrix of all points travelled
@@ -24,4 +32,7 @@ class MyBugAlgorithm : public amp::BugAlgorithm {
         bool goalReached;
         bool collide;
         bool boundaryFollowing;
+        bool loopCompleted;
+        //bool atCorner;
+        int lastBoundaryDirection = 0; // Track last boundary following direction
 };
