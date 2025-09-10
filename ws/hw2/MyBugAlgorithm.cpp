@@ -159,6 +159,168 @@ amp::Path2D MyBugAlgorithm::plan(const amp::Problem2D& problem) {
     return path;
 }
 
+amp::Path2D MyBugAlgorithm::planBUG2(const amp::Problem2D& problem) {
+    amp::Path2D path;
+
+    q = problem.q_init;
+    Eigen::Vector2d q_start = problem.q_init;
+    q_previous = problem.q_init;
+    Eigen::Vector2d q_goal = problem.q_goal;
+    
+    const double tol = 1e-2;
+    const double minStepSize = 0.05;  // Distance to move toward goal
+    const double maxStepSize = 0.2; // maximum distance to travel toward goal
+    double currStepSize = maxStepSize;
+    
+    const double safeDist = 0.05;  // Distance for boundary following
+    const double checkDist = 0.05; // Distance for collision checking
+    const int maxSteps = 5000;
+    
+    // Initialize member variables
+    goalReached = false;
+    collide = false;
+    boundaryFollowing = false;
+    loopCompleted = false;
+    
+    // Initialize matrices
+    q_L.resize(0, 2);  // Will store leave points
+    q_H.resize(0, 2);  // Will store hit points
+    
+    path.waypoints.push_back(q);
+    
+    collision coll;
+    collision::Result result;
+    int steps = 0;
+    int i = 1;
+    int boundarySteps = 0;  // Count steps while following boundary
+    
+    while (!goalReached && steps < maxSteps) {
+        steps++;
+        //std::cout << "step: " << steps << std::endl;
+        
+        // Check if goal is reached
+        if ((q_goal - q).norm() <= 1e-1) {
+            std::cout << "Goal Reached!" << std::endl;
+            goalReached = true;
+            path.waypoints.push_back(q_goal);
+            break;
+        }
+        
+        if (!boundaryFollowing) {
+            // PHASE 1: Move toward goal
+            Eigen::Vector2d dir = (q_goal - q).normalized();
+            q_next = q + currStepSize * dir;
+
+            
+            
+            // Check for collision
+            result = coll.collisionCheckAll(q_next, problem);
+            
+            if (!result.hit) {
+                // No collision, move toward goal
+
+                // Store current point for boundary stuff
+                q_previous = q;
+
+                path.waypoints.push_back(q_next);
+                q = q_next;
+                
+            } else {
+                currStepSize -= 0.01;
+                if((q_next-q).norm() <= safeDist) {
+                    currStepSize = maxStepSize;
+                    // Hit obstacle, start boundary following
+                    //std::cout << "Hit obstacle: " << i << " at q_H: " << q.transpose() << std::endl;
+                    boundaryFollowing = true;
+                    collide = true;
+                    loopCompleted = false;
+                    i++;
+                    boundarySteps = 0;
+
+                    // Add hit point to q_H
+                    q_H.conservativeResize(i + 1, 2);
+                    q_H.row(i-1) = q.transpose();
+                    
+                    // Initialize leave point as current hit point
+                    q_L.conservativeResize(i + 1, 2);
+                    q_L.row(i-1) = q.transpose();
+                    
+                    
+                    
+                    std::cout << "Starting boundary following (" << direction << " direction)" << std::endl;
+                    std::cout << "Initial q_L: " << q_L.row(i-1) << " (dist to goal: " 
+                            << (q_goal - q).norm() << ")" << std::endl;
+                }
+            }
+                
+        } else {
+            // PHASE 2: Boundary following
+            boundarySteps++;
+            //std::cout << "Current boundaryStep: " <<boundarySteps << " Current pos: " << q.transpose() << std::endl;
+            double currentDistToGoal = (q_goal - q).norm();
+            double bestLeaveDistToGoal = (q_goal - q_L.row(i-1).transpose()).norm();
+            
+            // Always update leave point if current position is closer to goal
+            if (currentDistToGoal < bestLeaveDistToGoal) {
+                q_L.row(i-1) = q.transpose();
+                //std::cout << "Updated q_L to: " << q.transpose() 
+                        //<< " (dist to goal: " << currentDistToGoal << ")" << std::endl;
+            } else {
+                loopCompleted = true;
+            }
+
+            /*
+            // Check if we've completed a full loop (returned to q_H)
+            if (!loopCompleted && (q - q_H.row(i-1).transpose()).norm() <= 1e-1 && boundarySteps > 10) { //HAD TO MASSIVELY REDUCE TOLERANCE
+                std::cout << "Full loop completed! Returned to q_H: " << q.transpose() << std::endl;
+                std::cout << "Moving to best q_L: " << q_L.row(i-1) << std::endl;
+                loopCompleted = true;
+            }
+            */
+            
+            // If loop is completed and we're now at the best leave point, exit boundary following
+            if (loopCompleted) {
+                Eigen::Vector2d bestLeavePoint = q_L.row(i-1).transpose();
+                if ((q - bestLeavePoint).norm() <= 1e-1) {
+                    std::cout << "Reached best q_L: " << q.transpose() << ", exiting boundary following" << std::endl;
+                    boundaryFollowing = false;
+                    collide = false;
+                    
+                    continue;
+                }
+            }
+            
+            // Move along boundary using wall-following (CCW or CW based on direction)
+            Eigen::Vector2d q_next_boundary;
+            
+            // Follow boundary using wall-following
+            q_next_boundary = followBoundary(q, q_previous, problem, coll, safeDist, checkDist, direction);
+            
+            
+            
+            if ((q_next_boundary - q).norm() > tol) {
+                //std::cout <<"Valid q_next_boundary, pushing to waypoint" << std::endl;
+                q_previous = q;
+                path.waypoints.push_back(q_next_boundary);
+                q = q_next_boundary;
+            } else {
+                std::cout << "Stuck in boundary following!" << std::endl;
+                break;
+            }
+        }
+    }
+    
+    if (steps >= maxSteps) {
+        std::cout << "Maximum steps reached without finding goal" << std::endl;
+        std::cout << "Last recorded pos: " << q.transpose() << std::endl;
+    }
+    
+    return path;
+}
+
+
+
+
 // Simple wall following - keeps obstacle on the right side (for CCW traversal)
 Eigen::Vector2d MyBugAlgorithm::followBoundary(const Eigen::Vector2d& current,
                                             const Eigen::Vector2d& previous,
