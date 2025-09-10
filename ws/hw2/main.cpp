@@ -51,6 +51,7 @@ int main(int argc, char** argv) {
         Visualizer::makeFigure(problem, path);
     }
     
+    
     // Let's get crazy and generate a random environment and test your algorithm
     {
         amp::Path2D path; // Make empty path, problem, and collision points, as they will be created by generateAndCheck()

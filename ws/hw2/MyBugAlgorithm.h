@@ -4,6 +4,7 @@
 #include "hw/HW2.h"
 #include <Eigen/Dense>
 #include "collisionCheck.h"
+#include <algorithm>
 
 /// @brief Declare your bug algorithm class here. Note this class derives the bug algorithm class declared in HW2.h
 class MyBugAlgorithm : public amp::BugAlgorithm {
@@ -12,22 +13,41 @@ class MyBugAlgorithm : public amp::BugAlgorithm {
         virtual amp::Path2D plan(const amp::Problem2D& problem) override;
         
         // Add any other methods here...
+        struct dirCheckResult{
+            std::vector<int> validDirs;
+            std::vector<bool> collisions;
+        };
         
     
      private:
         
-        Eigen::Vector2d getNextBoundaryPoint(const Eigen::Vector2d& current, 
-                                        const Eigen::Vector2d& previous,
-                                        const amp::Problem2D& problem,
-                                        collision& coll,
-                                        double safeDist,
-                                        double stepSize);
-    
+        Eigen::Vector2d followBoundary(const Eigen::Vector2d& current,
+                                const Eigen::Vector2d& previous,
+                                const amp::Problem2D& problem,
+                                collision& coll,
+                                double stepSize,
+                                double radius,
+                                char direction);
+
+        Eigen::Vector2d moveTowardLeavePoint(const Eigen::Vector2d& current,
+                                            const Eigen::Vector2d& previous,
+                                            const Eigen::Vector2d& leavePoint,
+                                            const amp::Problem2D& problem,
+                                            collision& coll,
+                                            double stepSize,
+                                            double radius,
+                                            char direction);
+            
         // Member variables
+        Eigen::Vector2d q;
+        Eigen::Vector2d q_next;
+        Eigen::Vector2d q_previous;
         Eigen::MatrixXd q_L;  // N×2 matrix
         Eigen::MatrixXd q_H;  // N×2 matrix
         Eigen::MatrixXd Q; // Nx2 matrix of all points travelled
         Eigen::MatrixXd QBoundary;
+        Eigen::Vector2d currentTargetVertex;
+        bool hasTargetVertex = false;
         char direction = 'L'; // define if robot is right [R] or left [L] turning TEST BOTH
         bool goalReached;
         bool collide;
@@ -35,4 +55,5 @@ class MyBugAlgorithm : public amp::BugAlgorithm {
         bool loopCompleted;
         //bool atCorner;
         int lastBoundaryDirection = 0; // Track last boundary following direction
+        int currentObstacleIdx;
 };
