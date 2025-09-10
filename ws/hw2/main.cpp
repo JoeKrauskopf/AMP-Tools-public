@@ -19,9 +19,9 @@ int main(int argc, char** argv) {
     Problem2D problem = HW2::getWorkspace1();
 
     // Use WO1 from Exercise 2
-    /*
-    Problem2D problem = HW2::getWorkspace2();
-    */
+    
+    //Problem2D problem = HW2::getWorkspace2();
+    
 
     // Make a random environment spec, edit properties about it such as the number of obstacles
     /*
@@ -40,7 +40,8 @@ int main(int argc, char** argv) {
     
     {
         // Call your algorithm on the problem
-        amp::Path2D path = algo.plan(problem);
+        //amp::Path2D path = algo.plan(problem); // bug1
+        amp::Path2D path = algo.planBUG2(problem);
 
         // Check your path to make sure that it does not collide with the environment 
         bool success = HW2::check(path, problem);
@@ -69,7 +70,7 @@ int main(int argc, char** argv) {
     Visualizer::saveFigures(true, "hw2_figs");
 
 
-    HW2::grade(algo, "joseph.krauskopf@colorado.edu", argc, argv);
+    //HW2::grade(algo, "joseph.krauskopf@colorado.edu", argc, argv);
     
     /* If you want to reconstruct your bug algorithm object every trial (to reset member variables from scratch or initialize), use this method instead*/
     //HW2::grade<MyBugAlgorithm>("nonhuman.biologic@myspace.edu", argc, argv, constructor_parameter_1, constructor_parameter_2, etc...);

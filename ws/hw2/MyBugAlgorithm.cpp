@@ -19,7 +19,7 @@ amp::Path2D MyBugAlgorithm::plan(const amp::Problem2D& problem) {
     
     const double safeDist = 0.05;  // Distance for boundary following
     const double checkDist = 0.05; // Distance for collision checking
-    const int maxSteps = 5000;
+    const int maxSteps = 10000;
     
     // Initialize member variables
     goalReached = false;
@@ -159,6 +159,7 @@ amp::Path2D MyBugAlgorithm::plan(const amp::Problem2D& problem) {
     return path;
 }
 
+// THIS NEEDS MORE WORK BUT CLOSE
 amp::Path2D MyBugAlgorithm::planBUG2(const amp::Problem2D& problem) {
     amp::Path2D path;
 
@@ -166,6 +167,9 @@ amp::Path2D MyBugAlgorithm::planBUG2(const amp::Problem2D& problem) {
     Eigen::Vector2d q_start = problem.q_init;
     q_previous = problem.q_init;
     Eigen::Vector2d q_goal = problem.q_goal;
+    Eigen::Vector2d mLineDir = (q_goal - q_start).normalized();
+    
+
     
     const double tol = 1e-2;
     const double minStepSize = 0.05;  // Distance to move toward goal
@@ -174,7 +178,7 @@ amp::Path2D MyBugAlgorithm::planBUG2(const amp::Problem2D& problem) {
     
     const double safeDist = 0.05;  // Distance for boundary following
     const double checkDist = 0.05; // Distance for collision checking
-    const int maxSteps = 5000;
+    const int maxSteps = 100000;
     
     // Initialize member variables
     goalReached = false;
@@ -265,21 +269,34 @@ amp::Path2D MyBugAlgorithm::planBUG2(const amp::Problem2D& problem) {
                 q_L.row(i-1) = q.transpose();
                 //std::cout << "Updated q_L to: " << q.transpose() 
                         //<< " (dist to goal: " << currentDistToGoal << ")" << std::endl;
-            } else {
+            }
+            Eigen::Vector2d dir1 = (q_goal - q).normalized();
+            Eigen::Vector2d dir2 = mLineDir.normalized();
+            if (std::abs(dir1.dot(dir2) - 1.0) <= 1e-1 && boundarySteps > 10) {
+                // reencountered m-line
+                std::cout << "re-encountered m-line " << q.transpose() << std::endl;
+                std::cout << "Moving to best q_L: " << q_L.row(i-1) << std::endl;
                 loopCompleted = true;
             }
 
-            /*
+            
             // Check if we've completed a full loop (returned to q_H)
             if (!loopCompleted && (q - q_H.row(i-1).transpose()).norm() <= 1e-1 && boundarySteps > 10) { //HAD TO MASSIVELY REDUCE TOLERANCE
                 std::cout << "Full loop completed! Returned to q_H: " << q.transpose() << std::endl;
                 std::cout << "Moving to best q_L: " << q_L.row(i-1) << std::endl;
                 loopCompleted = true;
             }
-            */
+            
             
             // If loop is completed and we're now at the best leave point, exit boundary following
             if (loopCompleted) {
+                
+                std::cout << "Reached best q_L: " << q.transpose() << ", exiting boundary following" << std::endl;
+                boundaryFollowing = false;
+                collide = false;
+                    
+                continue;
+                /*
                 Eigen::Vector2d bestLeavePoint = q_L.row(i-1).transpose();
                 if ((q - bestLeavePoint).norm() <= 1e-1) {
                     std::cout << "Reached best q_L: " << q.transpose() << ", exiting boundary following" << std::endl;
@@ -288,6 +305,7 @@ amp::Path2D MyBugAlgorithm::planBUG2(const amp::Problem2D& problem) {
                     
                     continue;
                 }
+                */
             }
             
             // Move along boundary using wall-following (CCW or CW based on direction)
