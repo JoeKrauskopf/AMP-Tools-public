@@ -33,6 +33,10 @@ class MyBugAlgorithm : public amp::BugAlgorithm {
                                             double stepSize,
                                             double radius,
                                             char direction);
+        bool isOnMline(const Eigen::Vector2d& current,
+                    const Eigen::Vector2d& start,
+                    const Eigen::Vector2d& end,
+                    double tol);
             
         // Member variables
         Eigen::Vector2d q;

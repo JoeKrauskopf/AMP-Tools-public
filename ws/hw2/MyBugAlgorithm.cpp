@@ -167,20 +167,21 @@ amp::Path2D MyBugAlgorithm::planBUG2(const amp::Problem2D& problem) {
     Eigen::Vector2d q_start = problem.q_init;
     q_previous = problem.q_init;
     Eigen::Vector2d q_goal = problem.q_goal;
-    Eigen::Vector2d mLineDir = (q_goal - q_start).normalized();
+    const Eigen::Vector2d mLine = (q_goal - q_start);
     
 
     
-    const double tol = 1e-2;
+    const double tol = 1e-1;
     const double minStepSize = 0.05;  // Distance to move toward goal
     const double maxStepSize = 0.2; // maximum distance to travel toward goal
     double currStepSize = maxStepSize;
     
     const double safeDist = 0.05;  // Distance for boundary following
     const double checkDist = 0.05; // Distance for collision checking
-    const int maxSteps = 100000;
+    const int maxSteps = 10000;
     
     // Initialize member variables
+    bool onMline = false;
     goalReached = false;
     collide = false;
     boundaryFollowing = false;
@@ -203,7 +204,7 @@ amp::Path2D MyBugAlgorithm::planBUG2(const amp::Problem2D& problem) {
         //std::cout << "step: " << steps << std::endl;
         
         // Check if goal is reached
-        if ((q_goal - q).norm() <= 1e-1) {
+        if ((q_goal - q).norm() <= tol) {
             std::cout << "Goal Reached!" << std::endl;
             goalReached = true;
             path.waypoints.push_back(q_goal);
@@ -224,6 +225,7 @@ amp::Path2D MyBugAlgorithm::planBUG2(const amp::Problem2D& problem) {
                 // No collision, move toward goal
 
                 // Store current point for boundary stuff
+                onMline = true;
                 q_previous = q;
 
                 path.waypoints.push_back(q_next);
@@ -235,6 +237,7 @@ amp::Path2D MyBugAlgorithm::planBUG2(const amp::Problem2D& problem) {
                     currStepSize = maxStepSize;
                     // Hit obstacle, start boundary following
                     //std::cout << "Hit obstacle: " << i << " at q_H: " << q.transpose() << std::endl;
+                    onMline = false;
                     boundaryFollowing = true;
                     collide = true;
                     loopCompleted = false;
@@ -270,22 +273,27 @@ amp::Path2D MyBugAlgorithm::planBUG2(const amp::Problem2D& problem) {
                 //std::cout << "Updated q_L to: " << q.transpose() 
                         //<< " (dist to goal: " << currentDistToGoal << ")" << std::endl;
             }
-            Eigen::Vector2d dir1 = (q_goal - q).normalized();
-            Eigen::Vector2d dir2 = mLineDir.normalized();
-            if (std::abs(dir1.dot(dir2) - 1.0) <= 1e-1 && boundarySteps > 10) {
+            bool onMline = isOnMline(q, q_start, q_goal, 3e-1);
+            
+
+            if (onMline && (q_goal - q).norm() < (q_goal - q_H.row(i-1).transpose()).norm() && boundarySteps > 10) {
                 // reencountered m-line
                 std::cout << "re-encountered m-line " << q.transpose() << std::endl;
-                std::cout << "Moving to best q_L: " << q_L.row(i-1) << std::endl;
-                loopCompleted = true;
+                //std::cout << "Moving to best q_L: " << q_L.row(i-1) << std::endl;
+                //loopCompleted = true;
+                boundaryFollowing = false;
+                collide = false;
+                continue;
             }
 
-            
+            /*
             // Check if we've completed a full loop (returned to q_H)
-            if (!loopCompleted && (q - q_H.row(i-1).transpose()).norm() <= 1e-1 && boundarySteps > 10) { //HAD TO MASSIVELY REDUCE TOLERANCE
+            if (!loopCompleted && (q - q_H.row(i-1).transpose()).norm() <= tol && boundarySteps > 10) { //HAD TO MASSIVELY REDUCE TOLERANCE
                 std::cout << "Full loop completed! Returned to q_H: " << q.transpose() << std::endl;
                 std::cout << "Moving to best q_L: " << q_L.row(i-1) << std::endl;
                 loopCompleted = true;
             }
+            */
             
             
             // If loop is completed and we're now at the best leave point, exit boundary following
@@ -316,7 +324,7 @@ amp::Path2D MyBugAlgorithm::planBUG2(const amp::Problem2D& problem) {
             
             
             
-            if ((q_next_boundary - q).norm() > tol) {
+            if ((q_next_boundary - q).norm() > 1e-3) {
                 //std::cout <<"Valid q_next_boundary, pushing to waypoint" << std::endl;
                 q_previous = q;
                 path.waypoints.push_back(q_next_boundary);
@@ -503,4 +511,26 @@ Eigen::Vector2d MyBugAlgorithm::moveTowardLeavePoint(const Eigen::Vector2d& curr
     return followBoundary(current, previous, problem, coll, stepSize, radius, direction);
 }
 
+
+bool MyBugAlgorithm::isOnMline(const Eigen::Vector2d& current,
+                    const Eigen::Vector2d& start,
+                    const Eigen::Vector2d& end,
+                    double tol) {
+    Eigen::Vector2d qVec = current-start;
+    Eigen::Vector2d mLine = end-start;
+
+    double cross = std::abs(mLine.x() * qVec.y() - mLine.y() * qVec.x());
+    double dot = qVec.dot(mLine);
+    if (cross > tol) {
+        return false; // colinearity
+    }
+    //check if ahead or behind mline
+    if (dot < -tol) {
+        return false; 
+    }
+    if (dot > mLine.squaredNorm() + tol) {
+        return false;
+    }
+    return true;
+}
 
