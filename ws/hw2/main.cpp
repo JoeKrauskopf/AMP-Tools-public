@@ -16,11 +16,11 @@ int main(int argc, char** argv) {
     /*    Randomly generate the problem     */ 
 
     // Use WO1 from Exercise 2
-    //Problem2D problem = HW2::getWorkspace1();
+    Problem2D problem = HW2::getWorkspace1();
 
     // Use WO1 from Exercise 2
     
-    Problem2D problem = HW2::getWorkspace2();
+    //Problem2D problem = HW2::getWorkspace2();
     
 
     // Make a random environment spec, edit properties about it such as the number of obstacles
@@ -47,6 +47,7 @@ int main(int argc, char** argv) {
         bool success = HW2::check(path, problem);
 
         LOG("Found valid solution to workspace 1: " << (success ? "Yes!" : "No :("));
+        LOG("path length: " << path.length());
 
         // Visualize the path and environment
         Visualizer::makeFigure(problem, path);
@@ -56,7 +57,7 @@ int main(int argc, char** argv) {
     // Let's get crazy and generate a random environment and test your algorithm
     {
         // figure out how to test bug2 here? or maybe it doesnt matter...
-        
+
         amp::Path2D path; // Make empty path, problem, and collision points, as they will be created by generateAndCheck()
         amp::Problem2D random_prob; 
         std::vector<Eigen::Vector2d> collision_points;

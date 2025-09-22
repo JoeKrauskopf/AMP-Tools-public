@@ -11,6 +11,8 @@
 // Include the header of the shared class
 #include "HelpfulClass.h"
 
+#include <cmath> // for M_PI
+
 using namespace amp;
 
 int main(int argc, char** argv) {
@@ -22,6 +24,13 @@ int main(int argc, char** argv) {
     // You can visualize your manipulator given an angle state like so:
     amp::ManipulatorState test_state;
     test_state.setZero();
+    test_state.resize(3);           // make sure it has 3 elements
+    test_state[0] = M_PI / 6;       // 45 degrees
+    test_state[1] = M_PI / 3;
+    test_state[2] = 7*M_PI / 4;
+    //test_state[3] = 0;
+
+    
     // The visualizer uses your implementation of forward kinematics to show the joint positions so you can use that to test your FK algorithm
     Visualizer::makeFigure(manipulator, test_state); 
 
@@ -38,6 +47,6 @@ int main(int argc, char** argv) {
     Visualizer::saveFigures();
 
     // Grade method
-    amp::HW4::grade<MyManipulator2D>(cspace_constructor, "nonhuman.biologic@myspace.edu", argc, argv);
+    //amp::HW4::grade<MyManipulator2D>(cspace_constructor, "nonhuman.biologic@myspace.edu", argc, argv);
     return 0;
 }

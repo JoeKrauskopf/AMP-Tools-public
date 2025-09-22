@@ -48,7 +48,7 @@ class MyBugAlgorithm : public amp::BugAlgorithm {
         Eigen::MatrixXd QBoundary;
         Eigen::Vector2d currentTargetVertex;
         bool hasTargetVertex = false;
-        char direction = 'L'; // define if robot is right [R] or left [L] turning TEST BOTH
+        char direction = 'R'; // define if robot is right [R] or left [L] turning TEST BOTH
         bool goalReached;
         bool collide;
         bool boundaryFollowing;
