@@ -22,13 +22,27 @@ int main(int argc, char** argv) {
     MyManipulator2D manipulator;
 
     // You can visualize your manipulator given an angle state like so:
+    Eigen::Vector2d goal;
+    goal << 2,0; // end effector position
+    amp::ManipulatorState test_state = manipulator.getConfigurationFromIK(goal);
+    std::cout << "Computed joint angles: ";
+    for (int i = 0; i < test_state.size(); ++i) {
+        std::cout << test_state(i) << " ";
+    }
+    std::cout << std::endl;
+
+    /*
     amp::ManipulatorState test_state;
     test_state.setZero();
     test_state.resize(3);           // make sure it has 3 elements
     test_state[0] = M_PI / 6;       // 45 degrees
     test_state[1] = M_PI / 3;
     test_state[2] = 7*M_PI / 4;
+    */
     //test_state[3] = 0;
+
+
+
 
     
     // The visualizer uses your implementation of forward kinematics to show the joint positions so you can use that to test your FK algorithm
@@ -47,6 +61,6 @@ int main(int argc, char** argv) {
     Visualizer::saveFigures();
 
     // Grade method
-    //amp::HW4::grade<MyManipulator2D>(cspace_constructor, "nonhuman.biologic@myspace.edu", argc, argv);
+    amp::HW4::grade<MyManipulator2D>(cspace_constructor, "nonhuman.biologic@myspace.edu", argc, argv);
     return 0;
 }

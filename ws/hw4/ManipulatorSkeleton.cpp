@@ -6,6 +6,12 @@ MyManipulator2D::MyManipulator2D()
     : LinkManipulator2D({0.5, 1.0, 0.5}) 
 {}
 
+/*
+    MyManipulator2D::MyManipulator2D()
+        : LinkManipulator2D({1, 0.5, 1}) 
+    {}
+*/
+
 // Override this method for implementing forward kinematics
 Eigen::Vector2d MyManipulator2D::getJointLocation(const amp::ManipulatorState& state, uint32_t joint_index) const {
     // Implement forward kinematics to calculate the joint position given the manipulator state (angles)
@@ -51,7 +57,7 @@ Eigen::Vector2d MyManipulator2D::getJointLocation(const amp::ManipulatorState& s
         joint_positions.push_back(pos);
  
     }
-    std::reverse(joint_positions.begin(), joint_positions.end());
+    //std::reverse(joint_positions.begin(), joint_positions.end());
 
 
     //std::vector<Eigen::Vector2d> joint_positions = {Eigen::Vector2d(0.0, 0.0), Eigen::Vector2d(0.0, 1.0), Eigen::Vector2d(1.0, 1.0), Eigen::Vector2d(2.0,1.0)};
@@ -63,34 +69,107 @@ Eigen::Vector2d MyManipulator2D::getJointLocation(const amp::ManipulatorState& s
 amp::ManipulatorState MyManipulator2D::getConfigurationFromIK(const Eigen::Vector2d& end_effector_location) const {
     // Implement inverse kinematics here
     const std::vector<double>& linkLengths = getLinkLengths(); //get link lengths;
-    amp::ManipulatorState joint_angles;
+
+    std::cout <<"Num Links: " << nLinks() << std::endl;
+
+    // Print link lengths
+    std::cout << "Link lengths: ";
+    for (size_t i = 0; i < linkLengths.size(); ++i) {
+        std::cout << linkLengths[i] << " ";
+    }
+    std::cout << std::endl;
+
+    amp::ManipulatorState joint_angles(nLinks());
     joint_angles.setZero();
-    x = end_effector_location.x();
-    y = end_effector_location.y();
+    std::cout << "Joint angles: " << joint_angles.transpose() << " Num Joint angles: " << joint_angles.size() << std::endl;
+
+    double x = end_effector_location.x();
+    double y = end_effector_location.y();
+    std::cout <<"End Effector Location: " << end_effector_location.transpose() << std::endl;
     
     // If you have different implementations for 2/3/n link manipulators, you can separate them here
     if (nLinks() == 2) {
         double a1 = linkLengths[0]; // link length1
         double a2 = linkLengths[1]; // link length2
 
-        double c2 = (1/(2*a1*a2)) * ((x^2 + y^2) - (a1^2 + a2^2));
-        double s2Plus   = sqrt(1-c2^2);
-        double s2Minus  = -sqrt(1-c2^2);
-        double c1Plus   = (1/(x^2 + y^2)) * (x*(a1 + a2*c2) + y*a2*sqrt(1-c2^2));
-        double c1Minus  = (1/(x^2 + y^2)) * (x*(a1 + a2*c2) - y*a2*sqrt(1-c2^2));
-        double s1Plus   = (1/(x^2 + y^2)) * (y*(a1 + a2*c2) + x*a2*sqrt(1-c2^2));
-        double s1Minus  = (1/(x^2 + y^2)) * (y*(a1 + a2*c2) - x*a2*sqrt(1-c2^2));
+        double c2 = (1/(2*a1*a2)) * ((x*x + y*x) - (a1*a1 + a2*a1));
+        c2 = std::max(-1.0, std::min(1.0, c2)); // clamp
+        double s2Plus   = sqrt(1-c2*c2);
+        double s2Minus  = -sqrt(1-c2*c2);
+        double c1Plus   = (1/(x*x + y*y)) * (x*(a1 + a2*c2) + y*a2*sqrt(1-c2*c2));
+        double c1Minus  = (1/(x*x + y*y)) * (x*(a1 + a2*c2) - y*a2*sqrt(1-c2*c2));
+        double s1Plus   = (1/(x*x + y*y)) * (y*(a1 + a2*c2) + x*a2*sqrt(1-c2*c2));
+        double s1Minus  = (1/(x*x + y*y)) * (y*(a1 + a2*c2) - x*a2*sqrt(1-c2*c2));
 
         // prob need to play around with this
-        double theta1 = acos(c1Minus); 
-        double theta2 = acos(c2);
+        double theta2 = atan2(s2Minus, c2);
 
+        double theta1 = atan2(s1Minus,c1Minus);
 
+        joint_angles(0) = theta1;
+        joint_angles(1) = theta2;
+        
         return joint_angles;
     } else if (nLinks() == 3) {
 
+        // need to fix theta 1
+        double a1 = linkLengths[0];
+        double theta1 = M_PI/4; // fix at 45 deg
+        for(theta1 = 0; theta1 <= 2*M_PI; theta1 += 0.01) {
+
+            //std::cout << "Fixed theta 1 to: " << theta1 << std::endl;
+            // then recalc new end point in local reference frame
+        
+            double x_rel = x - a1 * cos(theta1);
+            double y_rel = y - a1 * sin(theta1);
+            double x_prime =  x_rel * cos(theta1) + y_rel * sin(theta1);
+            double y_prime = -x_rel * sin(theta1) + y_rel * cos(theta1);
+            
+            //std::cout << "x_prime: " << x_prime << " y_prime: " << y_prime << std::endl;
+            // then just use 2 link kinematics to calc theta 2,3
+            double a2 = linkLengths[1];
+            double a3 = linkLengths[2];
+
+            double c3 = (1/(2*a2*a3)) * ((x_prime*x_prime + y_prime*y_prime) - (a2*a2 + a3*a3));
+            c3 = std::max(-1.0, std::min(1.0, c3)); // clamp
+            double s3Plus   = sqrt(1-c3*c3);
+            double s3Minus  = -sqrt(1-c3*c3);
+            double c2Plus   = (1/(x_prime*x_prime + y_prime*y_prime)) * (x_prime*(a2 + a3*c3) + y_prime*a3*sqrt(1-c3*c3));
+            double c2Minus  = (1/(x_prime*x_prime + y_prime*y_prime)) * (x_prime*(a2 + a3*c3) - y_prime*a3*sqrt(1-c3*c3));
+            double s2Plus   = (1/(x_prime*x_prime + y_prime*y_prime)) * (y_prime*(a2 + a3*c3) + x_prime*a3*sqrt(1-c3*c3));
+            double s2Minus  = (1/(x_prime*x_prime + y_prime*y_prime)) * (y_prime*(a2 + a3*c3) - x_prime*a3*sqrt(1-c3*c3));
+
+            /*
+            std::cout << "c3: " << c3 << std::endl;
+            std::cout << "s3Plus: " << s3Plus << " | s3Minus: " << s3Minus << std::endl;
+
+            std::cout << "c2Plus: " << c2Plus << " | c2Minus: " << c2Minus << std::endl;
+            std::cout << "s2Plus: " << s2Plus << " | s2Minus: " << s2Minus << std::endl;
+            */
+            // prob need to play around with this
+            double theta3 = atan2(s3Minus,c3); 
+            double theta2 = atan2(s2Minus,c2Minus);
+
+            //std::cout << "Theta 2: " << theta2 << " Theta 3: " << theta3 << std::endl;
+
+            joint_angles(0) = theta1;
+            joint_angles(1) = theta2;
+            joint_angles(2) = theta3;
+            // calc joint3 pos
+            Eigen::Vector2d joint3Pos = getJointLocation(joint_angles, 2);
+            double epsilon = 1e-6;
+            double distFromGoal = (end_effector_location - joint3Pos).norm();
+            //std::cout << "Dist from goal: " << distFromGoal << std::endl;
+            if(distFromGoal <= epsilon) {
+                std::cout << "Joint3 Pos: " << joint3Pos.transpose() << std::endl;
+                return joint_angles;
+            }
+
+        }
+
         return joint_angles;
     } else {
+        // no clue
 
         return joint_angles;
     }
