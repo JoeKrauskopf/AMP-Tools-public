@@ -57,3 +57,15 @@ collision::Result collision::collisionCheckAll(const Eigen::Vector2d& q, const a
     collisionDetected = false;
     return {collisionDetected, -1, -1};
 }
+
+collision::Result collision::collisionCheckAllEnv(const Eigen::Vector2d& q, const amp::Environment2D& env) {
+    int n = env.obstacles.size(); // number of obstacles in the workspace
+    for (int j = 0; j < n; j++) {
+        const amp::Polygon& obst = env.obstacles[j];
+        collision::Check check = collisionCheck(q, obst);
+        if (check.hit) {
+            return {true, j, check.edgeHit};
+        }
+    }
+    return {false, -1, -1};
+}

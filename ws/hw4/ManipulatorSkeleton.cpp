@@ -1,16 +1,16 @@
 #include "ManipulatorSkeleton.h"
 #include <iostream> // make sure this is included at the top
 
-
+/*
 MyManipulator2D::MyManipulator2D()
     : LinkManipulator2D({0.5, 1.0, 0.5}) 
 {}
-
-/*
-    MyManipulator2D::MyManipulator2D()
-        : LinkManipulator2D({1, 0.5, 1}) 
-    {}
 */
+
+    MyManipulator2D::MyManipulator2D()
+        : LinkManipulator2D({1, 1}) 
+    {}
+
 
 // Override this method for implementing forward kinematics
 Eigen::Vector2d MyManipulator2D::getJointLocation(const amp::ManipulatorState& state, uint32_t joint_index) const {
@@ -70,7 +70,7 @@ amp::ManipulatorState MyManipulator2D::getConfigurationFromIK(const Eigen::Vecto
     // Implement inverse kinematics here
     const std::vector<double>& linkLengths = getLinkLengths(); //get link lengths;
 
-    std::cout <<"Num Links: " << nLinks() << std::endl;
+    //std::cout <<"Num Links: " << nLinks() << std::endl;
 
     // Print link lengths
     std::cout << "Link lengths: ";
@@ -81,12 +81,15 @@ amp::ManipulatorState MyManipulator2D::getConfigurationFromIK(const Eigen::Vecto
 
     amp::ManipulatorState joint_angles(nLinks());
     joint_angles.setZero();
-    std::cout << "Joint angles: " << joint_angles.transpose() << " Num Joint angles: " << joint_angles.size() << std::endl;
+    //std::cout << "Joint angles: " << joint_angles.transpose() << " Num Joint angles: " << joint_angles.size() << std::endl;
 
     double x = end_effector_location.x();
     double y = end_effector_location.y();
     std::cout <<"End Effector Location: " << end_effector_location.transpose() << std::endl;
-    
+    double distFromGoal;
+    Eigen::Vector2d joint3Pos;
+    double bestError;
+    amp::ManipulatorState bestAngles;
     // If you have different implementations for 2/3/n link manipulators, you can separate them here
     if (nLinks() == 2) {
         double a1 = linkLengths[0]; // link length1
@@ -102,20 +105,47 @@ amp::ManipulatorState MyManipulator2D::getConfigurationFromIK(const Eigen::Vecto
         double s1Minus  = (1/(x*x + y*y)) * (y*(a1 + a2*c2) - x*a2*sqrt(1-c2*c2));
 
         // prob need to play around with this
-        double theta2 = atan2(s2Minus, c2);
+        double theta2a = atan2(s2Minus, c2);
+        double theta2b = atan2(s2Plus, c2);
 
         double theta1 = atan2(s1Minus,c1Minus);
 
-        joint_angles(0) = theta1;
-        joint_angles(1) = theta2;
+        // change for later or nah to do what im doing in 3-link
+        // now need to check every permutation of thetas to find if any result in a combination
+    std::vector<double> theta1_candidates = {theta1};
+    std::vector<double> theta2_candidates = {theta2a, theta2b};
+
+    bestError = std::numeric_limits<double>::max();
+    bestAngles = joint_angles;
+    for (double t1 : theta1_candidates) {
+        for (double t2 : theta2_candidates) {
+            joint_angles(0) = t1;
+            joint_angles(1) = t2;
+
+
+            Eigen::Vector2d joint2Pos = getJointLocation(joint_angles, 2);
+            double error = (end_effector_location - joint2Pos).norm();
+
+            if (error < bestError) {
+                bestError = error;
+                bestAngles = joint_angles;
+            }
+
+            // Optional: if error is already very small, break early
+            if (error <= 1e-6) {
+                std::cout << "Found exact solution: " << joint2Pos.transpose() << std::endl;
+                return joint_angles;
+            }
+        }
+    }
         
         return joint_angles;
     } else if (nLinks() == 3) {
 
         // need to fix theta 1
         double a1 = linkLengths[0];
-        double theta1 = M_PI/4; // fix at 45 deg
-        for(theta1 = 0; theta1 <= 2*M_PI; theta1 += 0.01) {
+        //double theta1 = M_PI/4; // fix at 45 deg
+        for(double theta1 = 0; theta1 < 2*M_PI; theta1 += 0.01) {
 
             //std::cout << "Fixed theta 1 to: " << theta1 << std::endl;
             // then recalc new end point in local reference frame
@@ -147,27 +177,46 @@ amp::ManipulatorState MyManipulator2D::getConfigurationFromIK(const Eigen::Vecto
             std::cout << "s2Plus: " << s2Plus << " | s2Minus: " << s2Minus << std::endl;
             */
             // prob need to play around with this
-            double theta3 = atan2(s3Minus,c3); 
-            double theta2 = atan2(s2Minus,c2Minus);
+            double theta3a = atan2(s3Minus,c3); 
+            double theta3b = atan2(s3Plus, c3);
+            double theta2a = atan2(s2Minus,c2Minus);
+            double theta2b = atan2(s2Plus,c2Plus);
+            double theta2c = atan2(s2Minus,c2Plus);
+            double theta2d = atan2(s2Plus,c2Minus);
 
-            //std::cout << "Theta 2: " << theta2 << " Theta 3: " << theta3 << std::endl;
+            // now need to check every permutation of thetas to find if any result in a combination
+            std::vector<double> theta2_candidates = {theta2a, theta2b, theta2c, theta2d};
+            std::vector<double> theta3_candidates = {theta3a, theta3b};
 
-            joint_angles(0) = theta1;
-            joint_angles(1) = theta2;
-            joint_angles(2) = theta3;
-            // calc joint3 pos
-            Eigen::Vector2d joint3Pos = getJointLocation(joint_angles, 2);
-            double epsilon = 1e-6;
-            double distFromGoal = (end_effector_location - joint3Pos).norm();
-            //std::cout << "Dist from goal: " << distFromGoal << std::endl;
-            if(distFromGoal <= epsilon) {
-                std::cout << "Joint3 Pos: " << joint3Pos.transpose() << std::endl;
-                return joint_angles;
+            bestError = std::numeric_limits<double>::max();
+            bestAngles = joint_angles;
+            for (double t2 : theta2_candidates) {
+                for (double t3 : theta3_candidates) {
+                    joint_angles(0) = theta1;
+                    joint_angles(1) = t2;
+                    joint_angles(2) = t3;
+
+                    Eigen::Vector2d joint3Pos = getJointLocation(joint_angles, 3);
+                    double error = (end_effector_location - joint3Pos).norm();
+
+                    if (error < bestError) {
+                        bestError = error;
+                        bestAngles = joint_angles;
+                    }
+
+                    // Optional: if error is already very small, break early
+                    if (error <= 1e-6) {
+                        std::cout << "Found exact solution: " << joint3Pos.transpose() << std::endl;
+                        return joint_angles;
+                    }
+                }
             }
-
         }
-
-        return joint_angles;
+        // if no exact match, return best found
+        std::cout << "Best error: " << bestError << std::endl;
+        std::cout << "Dist from goal: " << distFromGoal << std::endl;
+        std::cout << "Joint3 Pos: " << joint3Pos.transpose() << std::endl;
+        return bestAngles;
     } else {
         // no clue
 

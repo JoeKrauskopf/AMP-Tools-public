@@ -23,7 +23,7 @@ int main(int argc, char** argv) {
 
     // You can visualize your manipulator given an angle state like so:
     Eigen::Vector2d goal;
-    goal << 2,0; // end effector position
+    goal << 0.252528,-2.25907; // end effector position
     amp::ManipulatorState test_state = manipulator.getConfigurationFromIK(goal);
     std::cout << "Computed joint angles: ";
     for (int i = 0; i < test_state.size(); ++i) {
@@ -49,7 +49,7 @@ int main(int argc, char** argv) {
     Visualizer::makeFigure(manipulator, test_state); 
 
     // Create the collision space constructor
-    std::size_t n_cells = 5;
+    std::size_t n_cells = 200;
     MyManipulatorCSConstructor cspace_constructor(n_cells);
 
     // Create the collision space using a given manipulator and environment

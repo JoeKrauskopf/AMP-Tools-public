@@ -19,6 +19,7 @@ public:
 
     Check collisionCheck(const Eigen::Vector2d& q, const amp::Polygon& obstacle);
     Result collisionCheckAll(const Eigen::Vector2d& q, const amp::Problem2D& problem);
+    Result collisionCheckAllEnv(const Eigen::Vector2d& q, const amp::Environment2D& env);
 
 private:
     bool collisionDetected = false;
