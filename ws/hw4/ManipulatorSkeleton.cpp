@@ -3,13 +3,15 @@
 
 /*
 MyManipulator2D::MyManipulator2D()
-    : LinkManipulator2D({0.5, 1.0, 0.5}) 
+    : LinkManipulator2D({1, 0.5, 1}) 
 {}
 */
 
-    MyManipulator2D::MyManipulator2D()
-        : LinkManipulator2D({1, 1}) 
-    {}
+
+
+MyManipulator2D::MyManipulator2D()
+    : LinkManipulator2D({1, 1}) 
+{}
 
 
 // Override this method for implementing forward kinematics

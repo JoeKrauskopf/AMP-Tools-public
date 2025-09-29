@@ -22,14 +22,16 @@ int main(int argc, char** argv) {
     MyManipulator2D manipulator;
 
     // You can visualize your manipulator given an angle state like so:
+    
     Eigen::Vector2d goal;
-    goal << 0.252528,-2.25907; // end effector position
+    goal << 2,0; // end effector position
     amp::ManipulatorState test_state = manipulator.getConfigurationFromIK(goal);
     std::cout << "Computed joint angles: ";
     for (int i = 0; i < test_state.size(); ++i) {
         std::cout << test_state(i) << " ";
     }
     std::cout << std::endl;
+    
 
     /*
     amp::ManipulatorState test_state;
@@ -47,20 +49,20 @@ int main(int argc, char** argv) {
     
     // The visualizer uses your implementation of forward kinematics to show the joint positions so you can use that to test your FK algorithm
     Visualizer::makeFigure(manipulator, test_state); 
-
+    
     // Create the collision space constructor
     std::size_t n_cells = 200;
     MyManipulatorCSConstructor cspace_constructor(n_cells);
 
     // Create the collision space using a given manipulator and environment
-    std::unique_ptr<amp::GridCSpace2D> cspace = cspace_constructor.construct(manipulator, HW4::getEx3Workspace1());
+    std::unique_ptr<amp::GridCSpace2D> cspace = cspace_constructor.construct(manipulator, HW4::getEx3Workspace3());
 
     // You can visualize your cspace 
     Visualizer::makeFigure(*cspace);
-
+    Visualizer::makeFigure(HW4::getEx3Workspace3());
     Visualizer::saveFigures();
 
     // Grade method
-    amp::HW4::grade<MyManipulator2D>(cspace_constructor, "nonhuman.biologic@myspace.edu", argc, argv);
+    //amp::HW4::grade<MyManipulator2D>(cspace_constructor, "joseph.krauskopf@colorado.edu", argc, argv);
     return 0;
 }
