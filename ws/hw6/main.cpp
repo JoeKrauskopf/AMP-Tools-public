@@ -19,7 +19,7 @@ int main(int argc, char** argv) {
     Problem2D manip_problem = HW6::getHW4Problem2();
     
     // Construct point-agent and manipulator cspace instances.
-    std::size_t n_cells = 5;
+    std::size_t n_cells = 20;
     std::shared_ptr<MyPointAgentCSConstructor> point_agent_ctor = std::make_shared<MyPointAgentCSConstructor>(n_cells);
     std::shared_ptr<MyManipulatorCSConstructor> manipulator_ctor = std::make_shared<MyManipulatorCSConstructor>(n_cells);
     std::shared_ptr<WaveFrontAlgorithm> wf_algo = std::make_shared<MyWaveFrontAlgorithm>();
@@ -45,6 +45,6 @@ int main(int argc, char** argv) {
 
     Visualizer::saveFigures();
 
-    amp::HW6::grade<PointWaveFrontAlgorithm, ManipulatorWaveFrontAlgorithm, MyAStarAlgo>("yusif.razzaq@colorado.edu", argc, argv, std::make_tuple(wf_algo, point_agent_ctor), std::make_tuple(wf_algo, manipulator_ctor), std::make_tuple());
+    //amp::HW6::grade<PointWaveFrontAlgorithm, ManipulatorWaveFrontAlgorithm, MyAStarAlgo>("yusif.razzaq@colorado.edu", argc, argv, std::make_tuple(wf_algo, point_agent_ctor), std::make_tuple(wf_algo, manipulator_ctor), std::make_tuple());
     return 0;
 }

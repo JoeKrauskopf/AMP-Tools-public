@@ -18,8 +18,11 @@ amp::Path2D MyGDAlgorithm::plan(const amp::Problem2D& problem) {
     collision coll;
     collision::Result result;
     bool inCollision = false;
+    std::vector<Eigen::Vector2d> localMinima; 
+    double minPert = 0.1;
+    double lastPert = minPert; // initialize last pert
 
-    char escapeOpt = 'A';
+    char escapeOpt = 'B';
 
 
     MyPotentialFunction potential(problem.q_goal, problem, d_star, zetta, Q_star, eta);
@@ -31,37 +34,83 @@ amp::Path2D MyGDAlgorithm::plan(const amp::Problem2D& problem) {
     while(grad.norm() >= epsilon && i < max_iterations) {
         grad = potential.getGradient(q);
         double alpha = 0.1 / (1 + grad.norm());
-        Eigen::Vector2d q_next = q - alpha*grad;
         Eigen::Vector2d q_og = q;
 
+        Eigen::Vector2d q_next = q - alpha*grad;
+
+        // try adding random pert to q_next
+        //Eigen::Vector2d perturbation_q_next = Eigen::Vector2d::Random().normalized() * 0.001;
+        //q_next += perturbation_q_next;
+
+        
+
         if (grad.norm() < epsilon && (problem.q_goal - q).norm() > 0.25) {
+            Eigen::Vector2d localMinLoc = q;
             std::cout << "Detected local minimum at iteration " << i << std::endl;
+            // add vector of local minima points
+            // Check if this local minimum has been visited before
+            bool revisited = false;
+            for (const auto& prevMin : localMinima) {
+                if ((localMinLoc - prevMin).norm() < 1e-2) {  // threshold for "same" minimum
+                    revisited = true;
+                    break;
+                }
+            }
+
+            // Store the current local minimum
+            localMinima.push_back(localMinLoc);
+
+            if (revisited) {
+                std::cout << "This local minimum has been visited before. Consider increasing perturbation magnitude." << std::endl;
+                // you can increase perturbation magnitude here
+            }
+
             // print local min grad
-            std::cout << "Local Min Grad: " << grad.transpose() << std::endl;
+            //std::cout << "Local Min Grad: " << grad.transpose() << std::endl;
             switch (escapeOpt)
             {
                 case 'A': {
-                    // option a: random pertubation:
-                    Eigen::Vector2d perturbation = Eigen::Vector2d::Random().normalized() * 0.5; 
-                    q = q_og + perturbation;
-                    // check if this new point collides
-                    result = coll.collisionCheckAll(q, problem);
-                    while(result.hit) {
-                        Eigen::Vector2d perturbation = Eigen::Vector2d::Random().normalized() * 0.5; 
-                        q = q_og + perturbation;
-                        // check if this new point collides
-                        result = coll.collisionCheckAll(q, problem);
+                    // Random perturbation with edge collision checking and adaptive magnitude
+                    int numPerts = 100;
+                    for(int j =0; j<numPerts; j++){
+                        double localPert;
+                        // check if we've been in this local minima before
+                        if(revisited) {
+                            localPert = lastPert;
+                        }else {
+                            localPert = minPert;
+                        }
+                        Eigen::Vector2d perturbation = Eigen::Vector2d::Random().normalized() * localPert;
+                        Eigen::Vector2d candidate = q + perturbation;
+
+                        // ---- Collision check along the edge ----
+                        int numSamples = 10;
+                        bool validPerturb = true;
+                        for (int s = 1; s <= numSamples; ++s) {
+                            Eigen::Vector2d samplePoint = q + (perturbation * s / numSamples);
+                            result = coll.collisionCheckAll(samplePoint, problem);
+                            if (result.hit) {
+                                validPerturb = false;
+                                break;
+                            }
+                        }
+                        if (!validPerturb) {
+                        // Gradually increase magnitude if stuck
+                        localPert = std::min(localPert * 1.5, 10.0);
+                        } else {
+                            // Success — apply perturbation
+                            q = candidate;
+                            path.waypoints.push_back(q);
+                            grad = potential.getGradient(q);
+                            std::cout << "Applied random perturbation (edge-checked): "
+                                    << perturbation.transpose()
+                                    << " | magnitude: " << localPert
+                                    << " | new position: " << q.transpose() << std::endl;
+                        }
                     }
-
-                    
-                    path.waypoints.push_back(q);
-                    grad = potential.getGradient(q);
-
-                    std::cout << "Applied random perturbation: " << perturbation.transpose() << std::endl;
-                    continue;
-                    // if continues to fall into local minima try larger random pertubation but check along edge for collisions
-
+                    continue; // resume gradient descent
                 }
+
                 
                 case 'B': {
                     // option b: trangential pertubation
@@ -78,21 +127,15 @@ amp::Path2D MyGDAlgorithm::plan(const amp::Problem2D& problem) {
                 }
 
                 case 'C': {
-                    // bug 2 code
-                    std::cout << "Detected local minimum, applying simple wall-following..." << std::endl;
+                    // try to wall follow left then right to escape
+                    bool escaped = false;
+                    for(int dir=1; dir<3; dir++) {
+                        // dir = 1 left, 2 = right
+                        
+                    }
 
-                    // Local Bug2 variables
-                    Eigen::Vector2d q_bug = q;           // start at local minimum
-                    Eigen::Vector2d q_prev = q - grad.normalized() * 0.01; // small previous step
-                    Eigen::Vector2d q_goal = problem.q_goal;
-                    bool boundaryFollowing = true;
-                    int boundarySteps = 0;
-                    int maxBoundarySteps = 1000;
-                    double stepSize = 0.05;
-                    char direction = 'R'; // try right-hand wall following
 
-                    collision coll;
-
+                    continue; // continue main gradient descent loop
                 }
             
                 default: {
