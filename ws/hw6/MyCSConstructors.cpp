@@ -3,8 +3,10 @@
 #include "AMPCore.h"
 #include "hw/HW4.h"
 #include "tools/Visualizer.h"
+#include "ManipulatorSkeleton.h"
 #include <queue>
 #include <iostream>
+
 ////////////////////// THIS IS FROM HW4 //////////////////////
 
 /* You can just move these classes to shared folder and include them instead of copying them to hw6 project*/
@@ -39,6 +41,8 @@ std::pair<std::size_t, std::size_t> MyGridCSpace2D::getCellFromPoint(double x0, 
     return {cell_x, cell_y};
 }
 
+// FIGURE OUT WHY THIS DOESNT WORK
+
 // Override this method for computing all of the boolean collision values for each cell in the cspace
 std::unique_ptr<amp::GridCSpace2D> MyManipulatorCSConstructor::construct(const amp::LinkManipulator2D& manipulator, const amp::Environment2D& env) {
     // Create an object of my custom cspace type (e.g. MyGridCSpace2D) and store it in a unique pointer. 
@@ -60,11 +64,13 @@ std::unique_ptr<amp::GridCSpace2D> MyManipulatorCSConstructor::construct(const a
         }
     }
     */
+    
 
     //std::cout <<"Num Links: " << manipulator.nLinks() << std::endl;
 
     // Print link lengths
     const std::vector<double>& linkLengths = manipulator.getLinkLengths(); //get link lengths;
+    
     /*
     std::cout << "Link lengths: ";
     for (size_t i = 0; i < linkLengths.size(); ++i) {
@@ -73,9 +79,10 @@ std::unique_ptr<amp::GridCSpace2D> MyManipulatorCSConstructor::construct(const a
     std::cout << std::endl;
     */
     
-    double x0_min = 0, x0_max = 2*M_PI;  // Joint 1 range
-    double x1_min = 0, x1_max = 2*M_PI;  // Joint 2 range
-    
+    double x0_min = env.x_min, x0_max = env.x_max;  // Joint 1 range
+    double x1_min = env.y_min, x1_max = env.y_max;  // Joint 2 range
+    //double x0_min = -M_PI, x0_max = M_PI;  // Joint 1 range
+    //double x1_min = M_PI, x1_max = M_PI;  // Joint 2 range
     // Get bounds and grid size from the cspace object, not from 'this'
     auto x0_bounds = cspace.x0Bounds(); 
     auto x1_bounds = cspace.x1Bounds(); 
@@ -116,12 +123,13 @@ std::unique_ptr<amp::GridCSpace2D> MyManipulatorCSConstructor::construct(const a
             state[0] = theta1;
             state[1] = theta2;
             /*
-            if(i==1 && j == 9){
+            if(i==0 && j == 0){
                 // plot the configuration of the robot
                 std::cout << "Theta1: " << theta1 << " Theta2: " << theta2 << std::endl;
                 amp::Visualizer::makeFigure(manipulator, state); // plots the robot
             }
             */
+            
 
             /*
             Eigen::Vector2d base = manipulator.getJointLocation(state,0);
@@ -141,12 +149,14 @@ std::unique_ptr<amp::GridCSpace2D> MyManipulatorCSConstructor::construct(const a
             for(int ii = 0; ii<n; ii++) {
                 Eigen::Vector2d point = manipulator.getJointLocation(state, ii);
                 Eigen::Vector2d next_point = manipulator.getJointLocation(state,ii+1);
+
                 /*
                 std::cout << "point location: (" 
                     << point.x() << ", " << point.y() << ")" << std::endl;
                 std::cout << "next_point location: (" 
                     << next_point.x() << ", " << next_point.y() << ")" << std::endl;
                 */
+               
                 result = coll.collisionCheckAllEnv(point, env);
                 result2 = coll.collisionCheckAllEnv(next_point, env);
                 // if hit add to vector
@@ -161,7 +171,7 @@ std::unique_ptr<amp::GridCSpace2D> MyManipulatorCSConstructor::construct(const a
                 }
                 // if neither point in collision need to check along link
                 Eigen::Vector2d dir = (next_point-point).normalized(); // direction from point 1 to point 2
-                int steps = 200; // tune this
+                int steps = x0_cells; // tune this
                 double length = (next_point - point).norm();
                 double step_size = length / steps;
 
@@ -271,10 +281,11 @@ amp::Path2D MyWaveFrontAlgorithm::planInCSpace(const Eigen::Vector2d& q_init, co
     q.push({end_cell.first, end_cell.second});
 
     std::vector<std::pair<int,int>> neighbor_offsets = {
-        {-1,-1}, {-1,0}, {-1,1},
-        { 0,-1},          { 0,1},
-        { 1,-1}, { 1,0}, { 1,1}
-    }; // 8-direction neighbor connectivity
+        {-1, 0}, // left
+        { 1, 0}, // right
+        { 0,-1}, // down
+        { 0, 1}  // up
+    };
 
     while (!q.empty()) {
         auto current = q.front();
@@ -301,6 +312,9 @@ amp::Path2D MyWaveFrontAlgorithm::planInCSpace(const Eigen::Vector2d& q_init, co
     }
 
     // now to do the planning
+    
+
+    
     std::pair<int,int> current = {static_cast<int>(start_cell.first), static_cast<int>(start_cell.second)};
     path.waypoints.push_back(q_init); // Start configuration in continuous space
 
@@ -338,6 +352,7 @@ amp::Path2D MyWaveFrontAlgorithm::planInCSpace(const Eigen::Vector2d& q_init, co
 
         current = next;
     }
+    path.waypoints.push_back(q_goal);
 
     if (isManipulator) {
         Eigen::Vector2d bounds0 = Eigen::Vector2d(0.0, 0.0);
