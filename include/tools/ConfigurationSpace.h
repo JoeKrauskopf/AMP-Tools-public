@@ -58,17 +58,17 @@ class ConfigurationSpace2D {
             , m_x1_bounds(x1_min, x1_max)
             {}
 
-        /******* User Implemented Methods ********/
+            /******* User Implemented Methods ********/
 
-        /// @brief Check if a point in C-space is colliding.
-        /// NOTE: For grid-discretization of C-space, this method should simply find the cell that (x0, x1) is within, then return the collision value of that cell (see below).
-        /// For other implementations, you can simply implement a collision checker here.
-        /// @param x0 Value of the first configuration space variable
-        /// @param x1 Value of the second configuration space variable
-        /// @return `true` if the the point is in collision, `false` if it is not
-        virtual bool inCollision(double x0, double x1) const = 0;
+            /// @brief Check if a point in C-space is colliding.
+            /// NOTE: For grid-discretization of C-space, this method should simply find the cell that (x0, x1) is within, then return the collision value of that cell (see below).
+            /// For other implementations, you can simply implement a collision checker here.
+            /// @param x0 Value of the first configuration space variable
+            /// @param x1 Value of the second configuration space variable
+            /// @return `true` if the the point is in collision, `false` if it is not
+            virtual bool inCollision(double x0, double x1) const = 0;
 
-        /*****************************************/
+            /*****************************************/
 
         /// @brief Get bounds for the first config dimension
         /// @return Bounds

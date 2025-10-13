@@ -46,12 +46,13 @@ int main(int argc, char** argv) {
     // For Exercise 3, you will need to implement the A* algorithm.
     ShortestPathProblem problem = HW6::getEx3SPP();
     LookupSearchHeuristic heuristic = HW6::getEx3Heuristic();
+    amp::SearchHeuristic zeroHeuristic; // always returns 0
     MyAStarAlgo algo;
-    MyAStarAlgo::GraphSearchResult result = algo.search(problem, heuristic);
+    MyAStarAlgo::GraphSearchResult result = algo.search(problem, zeroHeuristic);
 
     Visualizer::saveFigures();
 
     // figure out why grader aint working for wavefront
-    amp::HW6::grade<PointWaveFrontAlgorithm, ManipulatorWaveFrontAlgorithm, MyAStarAlgo>("joseph.krauskopf@colorado.edu", argc, argv, std::make_tuple(wf_algo, point_agent_ctor), std::make_tuple(wf_algo, manipulator_ctor), std::make_tuple());
+    //amp::HW6::grade<PointWaveFrontAlgorithm, ManipulatorWaveFrontAlgorithm, MyAStarAlgo>("joseph.krauskopf@colorado.edu", argc, argv, std::make_tuple(wf_algo, point_agent_ctor), std::make_tuple(wf_algo, manipulator_ctor), std::make_tuple());
     return 0;
 }

@@ -1,4 +1,4 @@
-#include "MyAStar.h"
+#include "myAStar.h"
 #include <queue>
 #include <unordered_map>
 #include <unordered_set>
@@ -82,14 +82,6 @@ MyAStarAlgo::GraphSearchResult MyAStarAlgo::search(const amp::ShortestPathProble
         // 
 
     }
-
-
-        
-    
-
-    
-
-
 
 
     result.node_path.push_back(problem.goal_node);
