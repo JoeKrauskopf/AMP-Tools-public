@@ -50,7 +50,7 @@ std::unique_ptr<amp::GridCSpace2D> MyManipulatorCSConstructor::construct(const a
     std::unique_ptr<MyGridCSpace2D> cspace_ptr = std::make_unique<MyGridCSpace2D>(m_cells_per_dim, m_cells_per_dim, env.x_min, env.x_max, env.y_min, env.y_max);
     // In order to use the pointer as a regular GridCSpace2D object, we can just create a reference
     MyGridCSpace2D& cspace = *cspace_ptr;
-    std::cout << "Constructing C-Space for link manipulator" << std::endl;
+    //std::cout << "Constructing C-Space for link manipulator" << std::endl;
 
     //std::cout << "Environment contains " << env.obstacles.size() << " obstacles:" << std::endl;
 
@@ -208,7 +208,7 @@ std::unique_ptr<amp::GridCSpace2D> MyPointAgentCSConstructor::construct(const am
     std::unique_ptr<MyGridCSpace2D> cspace_ptr = std::make_unique<MyGridCSpace2D>(m_cells_per_dim, m_cells_per_dim, env.x_min, env.x_max, env.y_min, env.y_max);
     // In order to use the pointer as a regular GridCSpace2D object, we can just create a reference
     MyGridCSpace2D& cspace = *cspace_ptr;
-    std::cout << "Constructing C-space for point agent" << std::endl;
+    //std::cout << "Constructing C-space for point agent" << std::endl;
     // Get bounds and grid size from the cspace object, not from 'this'
     auto x0_bounds = cspace.x0Bounds(); 
     auto x1_bounds = cspace.x1Bounds(); 

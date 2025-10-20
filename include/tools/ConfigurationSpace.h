@@ -170,6 +170,99 @@ class GridCSpace2D : public ConfigurationSpace2D, public DenseArray2D<bool> {
         virtual ~GridCSpace2D() {}
 };
 
+// this is all claude AI:
+/// @brief N-Dimensional grid-based configuration space (derives from ConfigurationSpace)
+class MyGridCSpaceND : public ConfigurationSpace {
+    public:
+        MyGridCSpaceND(const Eigen::VectorXd& lower_bounds, 
+                       const Eigen::VectorXd& upper_bounds,
+                       const std::vector<std::size_t>& cells_per_dim)
+            : ConfigurationSpace(lower_bounds, upper_bounds)
+            , m_cells_per_dim(cells_per_dim)
+            , m_data(computeTotalCells(), false) // flat array of collision values
+        {
+            ASSERT(cells_per_dim.size() == dimension(), 
+                   "cells_per_dim must match configuration space dimension");
+        }
+
+        /// @brief Convert continuous point to cell indices (generalizes your 2D approach)
+        /// @param point N-dimensional point in continuous C-space
+        /// @return Vector of cell indices, one per dimension
+        std::vector<std::size_t> getCellFromPoint(const Eigen::VectorXd& point) const {
+            ASSERT(point.size() == (int)dimension(), "Point dimension must match C-space dimension");
+            
+            std::vector<std::size_t> cell_indices(dimension());
+            
+            for (std::size_t d = 0; d < dimension(); ++d) {
+                double min_bound = lowerBounds()(d);
+                double max_bound = upperBounds()(d);
+                std::size_t num_cells = m_cells_per_dim[d];
+                
+                // Normalize to [0, 1]
+                double u = (point(d) - min_bound) / (max_bound - min_bound);
+                
+                // Scale to cell index
+                std::size_t cell_idx = static_cast<std::size_t>(std::floor(u * num_cells));
+                
+                // Clamp to valid range [0, num_cells - 1]
+                cell_idx = std::min(cell_idx, num_cells - 1);
+                
+                cell_indices[d] = cell_idx;
+            }
+            
+            return cell_indices;
+        }
+
+        /// @brief Set collision value for a cell
+        /// @param indices Cell indices (one per dimension)
+        /// @param collision true for collision (1), false for free (0)
+        void setCell(const std::vector<std::size_t>& indices, bool collision) {
+            ASSERT(indices.size() == dimension(), "Index vector size must match dimension");
+            std::size_t flat_idx = indicesToFlat(indices);
+            m_data[flat_idx] = collision;
+        }
+
+        /// @brief Get collision value for a cell
+        /// @param indices Cell indices (one per dimension)
+        /// @return true if collision, false if free
+        bool getCell(const std::vector<std::size_t>& indices) const {
+            ASSERT(indices.size() == dimension(), "Index vector size must match dimension");
+            std::size_t flat_idx = indicesToFlat(indices);
+            return m_data[flat_idx];
+        }
+
+        /// @brief Override inCollision to query the grid
+        bool inCollision(const Eigen::VectorXd& cspace_state) const override {
+            auto cell_indices = getCellFromPoint(cspace_state);
+            return getCell(cell_indices);
+        }
+
+    private:
+        std::vector<std::size_t> m_cells_per_dim;
+        std::vector<bool> m_data; // Flat storage: 1 = collision, 0 = free
+
+        /// @brief Convert multi-dimensional indices to flat array index
+        /// Uses row-major ordering (last dimension varies fastest)
+        std::size_t indicesToFlat(const std::vector<std::size_t>& indices) const {
+            std::size_t flat_idx = 0;
+            std::size_t stride = 1;
+            for (int d = (int)dimension() - 1; d >= 0; --d) {
+                flat_idx += indices[d] * stride;
+                stride *= m_cells_per_dim[d];
+            }
+            return flat_idx;
+        }
+
+        std::size_t computeTotalCells() const {
+            std::size_t total = 1;
+            for (std::size_t cells : m_cells_per_dim) {
+                total *= cells;
+            }
+            return total;
+        }
+};
+
+
 }
 
 #include "public/ConfigurationSpace_impl.h"

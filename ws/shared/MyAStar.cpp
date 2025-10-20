@@ -9,7 +9,10 @@
 
 // Implement the search method for the A* algorithm
 MyAStarAlgo::GraphSearchResult MyAStarAlgo::search(const amp::ShortestPathProblem& problem, const amp::SearchHeuristic& heuristic) {
-    std::cout << "Starting A* Graph Search: Init --> goal | " << problem.init_node << " --> " << problem.goal_node << std::endl;
+    bool debug = 0;
+    if(debug) {
+        std::cout << "Starting A* Graph Search: Init --> goal | " << problem.init_node << " --> " << problem.goal_node << std::endl;
+    }
     GraphSearchResult result = {false, {}, 0.0}; // initialize the results object
 
     auto G = problem.graph;
@@ -48,9 +51,11 @@ MyAStarAlgo::GraphSearchResult MyAStarAlgo::search(const amp::ShortestPathProble
             result.node_path = std::list<amp::Node>(path.begin(), path.end());;
             result.path_cost = g_cost[goal];
             result.success = true;
-            result.print();
-            std::cout << "A* completed in " << iteration_count << " iterations." << std::endl;
-
+            if(debug) {
+                result.print();
+            
+                std::cout << "A* completed in " << iteration_count << " iterations." << std::endl;
+            }
             return result;
 
         }
@@ -94,7 +99,8 @@ MyAStarAlgo::GraphSearchResult MyAStarAlgo::search(const amp::ShortestPathProble
 
     result.node_path.push_back(problem.goal_node);
     result.path_cost += 1.0;
-
-    result.print();
+    if(debug) {
+        //result.print();
+    }
     return result;
 }

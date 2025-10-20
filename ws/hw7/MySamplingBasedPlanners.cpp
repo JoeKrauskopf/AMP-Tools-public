@@ -5,6 +5,7 @@
 
 // Implement your PRM algorithm here
 amp::Path2D MyPRM::plan(const amp::Problem2D& problem) {
+    amp::Timer timer("MyPRM::plan");  // Start timing
     amp::Path2D path2D;
     // make cspace
     std::size_t n_cells = 1000;
@@ -24,15 +25,15 @@ amp::Path2D MyPRM::plan(const amp::Problem2D& problem) {
     */
     // feed cspace to generic planner
     genericPRM prm_planner;
-    int num_samples = 2000;
-    double connection_radius = 5.0;
+    int num_samples = 1000;
+    double connection_radius = 1;
 
     amp::Path generic_path = prm_planner.plan(
         problem.q_init,          // Eigen::VectorXd(2)
         problem.q_goal,          // Eigen::VectorXd(2)
         cspace_nd,
-        num_samples,                     // number of PRM samples
-        connection_radius                      // connection radius
+        n,                     // number of PRM samples
+        r                      // connection radius
     );
 
 
@@ -43,9 +44,16 @@ amp::Path2D MyPRM::plan(const amp::Problem2D& problem) {
     //graph_prm.clear();
     graph_prm = prm_planner.getGraph();
 
-    for (const Eigen::VectorXd& q : generic_path.waypoints) {
-        path2D.waypoints.push_back(q.head<2>());  // take first 2 entries
+    if (!generic_path.waypoints.empty()) {
+        for (const Eigen::VectorXd& q : generic_path.waypoints) {
+            path2D.waypoints.push_back(q.head<2>());
+        }
+    } else {
+        //std::cerr << "[WARN] PRM returned an empty path!" << std::endl;
     }
+    // Print the most recent timing
+    //double elapsed_ms = amp::Profiler::getMostRecentProfile("MyPRM::plan", amp::TimeUnit::ms);
+    //std::cout << "Elapsed time: " << timer.now(amp::TimeUnit::ms) << " ms";
     return path2D;
 }
 
@@ -69,6 +77,8 @@ struct EuclideanHeuristic : public amp::SearchHeuristic {
 
 // Implement your RRT algorithm here
 amp::Path2D MyRRT::plan(const amp::Problem2D& problem) {
+    amp::Timer timer("MyRRT::plan");  // Start timing
+
     amp::Path2D path;
     // make cspace
     std::size_t n_cells = 1000;
@@ -78,18 +88,17 @@ amp::Path2D MyRRT::plan(const amp::Problem2D& problem) {
     auto [x_min, x_max] = cspace2d.x0Bounds();
     auto [y_min, y_max] = cspace2d.x1Bounds();
 
-    // RRT parms:
-    const int max_iterations = 100000;
-    const double step_size = 2;
-    const double epsilon = 0.5; // goal tolerance
-    const double rho = 0.05; // goal bias
     
-    std::cout << "Starting RRT!" << std::endl;
+    //std::cout << "Starting RRT!" << std::endl;
 
     // initialize tree
     std::vector<Eigen::Vector2d> nodes;
     std::shared_ptr<amp::Graph<double>> T = std::make_shared<amp::Graph<double>>();
     std::vector<int> parents;
+
+    rrt_nodes.clear();
+    rrt_graph = std::make_shared<amp::Graph<double>>();  // Use rrt_graph instead of T
+
 
     // Helper functions
     auto sample_random = [&]() -> Eigen::Vector2d {
@@ -136,13 +145,11 @@ amp::Path2D MyRRT::plan(const amp::Problem2D& problem) {
     bool found = false;
     int goal_idx = -1;
 
-    
 
     // create root at q_init
     nodes.push_back(problem.q_init);
-    //nodes.push_back(problem.q_goal);
-    std::cout << "[DEBUG] q_init: " << problem.q_init.transpose() << std::endl;
-    parents.push_back(-1); // root has no parents
+    rrt_nodes.push_back(problem.q_init);  // Sync with rrt_nodes
+    parents.push_back(-1);
 
 
     // while not solution found:
@@ -171,30 +178,29 @@ amp::Path2D MyRRT::plan(const amp::Problem2D& problem) {
         if (edge_collision_free(q_near, q_new)){
 
             // add q_new to tree
+            rrt_nodes.push_back(q_new);
             nodes.push_back(q_new);
             parents.push_back(near);
             int new_idx = static_cast<int>(nodes.size() - 1);
-            // add edges to T (both directions)
+            
+            // add edges to rrt_graph only
             double w = (q_new - q_near).norm();
-            T->connect((uint32_t)near, (uint32_t)new_idx, w);
-            T->connect((uint32_t)new_idx, (uint32_t)near, w);
+            rrt_graph->connect((uint32_t)near, (uint32_t)new_idx, w);
+            rrt_graph->connect((uint32_t)new_idx, (uint32_t)near, w);
 
-            //std::cout << "[DEBUG] Connected near to new" << std::endl;
-
-            // check for goal proximity
             if ((q_new - problem.q_goal).norm() <= epsilon) {
-                // verify q_new -> goal is free and add exact goal node
                 if (edge_collision_free(q_new, problem.q_goal)) {
                     nodes.push_back(problem.q_goal);
+                    rrt_nodes.push_back(problem.q_goal);  // Sync with rrt_nodes
                     parents.push_back(new_idx);
                     goal_idx = static_cast<int>(nodes.size() - 1);
-
+                    
                     double w2 = (problem.q_goal - q_new).norm();
-                    T->connect((uint32_t)new_idx, (uint32_t)goal_idx, w2);
-                    T->connect((uint32_t)goal_idx, (uint32_t)new_idx, w2);
+                    rrt_graph->connect((uint32_t)new_idx, (uint32_t)goal_idx, w2);
+                    rrt_graph->connect((uint32_t)goal_idx, (uint32_t)new_idx, w2);
 
                     found = true;
-                    std::cout << "[DEBUG] Goal found! Running A*" << std::endl;
+                    //std::cout << "[DEBUG] Goal found! Running A*" << std::endl;
                     break;
                 }
             }
@@ -205,7 +211,7 @@ amp::Path2D MyRRT::plan(const amp::Problem2D& problem) {
     int nearest = -1;
     if (!found) {
         // try connecting the closest node to the goal
-        std::cout << "[DEBUG] Unable to find goal, using nearest sample" << std::endl;
+        //std::cout << "[DEBUG] Unable to find goal, using nearest sample" << std::endl;
         nearest = nearest_index(problem.q_goal);
     } else {
         nearest = goal_idx;
@@ -213,16 +219,13 @@ amp::Path2D MyRRT::plan(const amp::Problem2D& problem) {
 
     // 3. run A* to find shortest path
 
-    // set up shortest problem
+    // set up shortest problem - use rrt_graph instead of T
     amp::ShortestPathProblem rrt_problem;
-    rrt_problem.graph = T;
+    rrt_problem.graph = rrt_graph;  // Use rrt_graph here
     rrt_problem.init_node = 0;
-    rrt_problem.goal_node = nearest; // change this
+    rrt_problem.goal_node = nearest;
 
-    
-    amp::SearchHeuristic zeroHeuristic; // always returns 0
-
-    // setup Heuristic
+    amp::SearchHeuristic zeroHeuristic;
 
     std::unordered_map<amp::Node, Eigen::VectorXd> nodeStates;
     for (size_t i = 0; i < nodes.size(); i++) {
@@ -230,32 +233,100 @@ amp::Path2D MyRRT::plan(const amp::Problem2D& problem) {
     }
     EuclideanHeuristic euclidHeuristic(problem.q_goal, nodeStates);
 
-    /*
-    for (size_t i = 0; i < nodes.size(); i++) {
-        nodeStates[i] = nodes[i];  // map node index to configuration
-    }
-    EuclideanHeuristic euclidHeuristic(goal_state, nodeStates); // fix this call
-    */
-
-    // call A*
     MyAStarAlgo algo;
-    //MyAStarAlgo::GraphSearchResult Astar_result = algo.search(prm_problem, zeroHeuristic);
     MyAStarAlgo::GraphSearchResult Astar_result = algo.search(rrt_problem, euclidHeuristic);
 
     // 4. reconstruct path
     std::list<amp::Node> node_path = Astar_result.node_path;
     if (Astar_result.success) {
         for (const amp::Node& n : Astar_result.node_path) {
-            path.waypoints.push_back(nodes[n]);  // map node index to configuration
+            path.waypoints.push_back(nodes[n]);
         }
     } else {
         std::cerr << "RRT: no path found!" << std::endl;
     }
+
+    
+    
+    if(smooth && Astar_result.success){
+        // implement path smoothing
+        int smoothPasses = 1000; // number of times to smooth
+        
+        //std::cout << "[DEBUG] Starting Path Smoothing" << std::endl;
+        //std::cout << "[DEBUG] Number of waypoints before smoothing: " << (int)path.waypoints.size() << std::endl;
+        // try smooth 1
+        for(int pass = 0; pass<smoothPasses; pass++){
+            int n = (int)path.waypoints.size();
+            // select i and j randomly from list of waypoints (0,1,2,...n)
+            int i = rand() % (n-1);
+            int j = i+1+rand() % (n-i-1);
+            // attempt to connect node i to node j
+            const Eigen::Vector2d& q_i = path.waypoints[i];
+            const Eigen::Vector2d& q_j = path.waypoints[j];
+
+            bool collision_free = true;
+            const double resolution = 0.2; // step size for collision checking
+            double dist = (q_j - q_i).norm();
+            int steps = std::max(2, (int)std::ceil(dist / resolution));
+
+            for (int k = 0; k <= steps; k++) {
+                double t = (double)k / (double)steps;
+                Eigen::Vector2d interp = q_i + t * (q_j - q_i);
+                if (cspace2d.inCollision(interp(0), interp(1))) {
+                    collision_free = false;
+                    break;
+                }
+            }
+            // if yes, remove nodes inbetween i and j
+            if (collision_free && (j > i + 1)) {
+                path.waypoints.erase(path.waypoints.begin() + i + 1,
+                                     path.waypoints.begin() + j);
+            }
+        }
+        //std::cout << "[DEBUG] Smoothing complete. Final waypoint count: "
+        //          << path.waypoints.size() << std::endl;
+    }
+
+    //std::cout << "Elapsed time: " << timer.now(amp::TimeUnit::ms) << " ms" << std::endl;
+    //std::cout << "[DEBUG] Total RRT nodes: " << rrt_nodes.size() << std::endl;
     return path;
 
 }
 
-
+// Add this debugging function to your genericPRM class
+void debugEdgeCollision(const Eigen::VectorXd& node_i, const Eigen::VectorXd& node_j, 
+                    const amp::ConfigurationSpace& cspace) {
+    std::cout << "\n=== Edge Collision Debug ===" << std::endl;
+    std::cout << "Node i: (" << node_i(0) << ", " << node_i(1) << ")" << std::endl;
+    std::cout << "Node j: (" << node_j(0) << ", " << node_j(1) << ")" << std::endl;
+    std::cout << "Node i collision: " << cspace.inCollision(node_i) << std::endl;
+    std::cout << "Node j collision: " << cspace.inCollision(node_j) << std::endl;
+    std::cout << "Dist i->j: " << (node_i-node_j).norm() << std::endl;
+    
+    double edge_length = (node_i - node_j).norm();
+    std::cout << "Edge length: " << edge_length << std::endl;
+    
+    // Test with different resolutions
+    std::vector<double> resolutions = {0.5, 0.2, 0.1, 0.05};
+    
+    for (double res : resolutions) {
+        int steps = std::max(2, (int)std::ceil(edge_length / res));
+        int collisions = 0;
+        
+        std::cout << "\nResolution: " << res << ", Steps: " << steps << std::endl;
+        
+        for (int k = 0; k <= steps; k++) {
+            double t = (double)k / (double)steps;
+            Eigen::VectorXd interp = node_i + (node_j - node_i) * t;
+            bool col = cspace.inCollision(interp);
+            if (col) collisions++;
+            if (k % 5 == 0 || col) {  // Print every 5th point or collisions
+                std::cout << "  Step " << k << " (t=" << t << "): (" << interp(0) << ", " << interp(1) << ") -> " << col << std::endl;
+            }
+        }
+        std::cout << "  Total collisions: " << collisions << " / " << (steps + 1) << std::endl;
+    }
+}
 
 
 amp::Path genericPRM::plan(
@@ -318,8 +389,8 @@ amp::Path genericPRM::plan(
 
         }
     }
-    std::cout << "[DEBUG] Valid samples: " << valid_samples << " / " << num_samples << std::endl;
-    std::cout << "[DEBUG] all_nodes size: " << all_nodes.size() << std::endl;
+    //std::cout << "[DEBUG] Valid samples: " << valid_samples << " / " << num_samples << std::endl;
+    //std::cout << "[DEBUG] all_nodes size: " << all_nodes.size() << std::endl;
 
 
     // 2. build graph
@@ -328,7 +399,8 @@ amp::Path genericPRM::plan(
     int edge_created = 0;
     std::vector<int> edges_per_node(nodes.size(), 0);
 
-    int max_edges_per_node_pair = (int)num_samples*0.005; // tune this for a more or less connected graph
+    int max_edges_per_node_pair = (int)num_samples*0.05; // tune this for a more or less connected graph
+
 
     // add edge between two nodes
     for(size_t i = 0; i < nodes.size(); ++i) {
@@ -339,10 +411,20 @@ amp::Path genericPRM::plan(
                 if (edges_per_node[i] >= max_edges_per_node_pair || edges_per_node[j] >= max_edges_per_node_pair)
                     continue;
                 bool collision_free = true;
-                int steps = num_samples*0.5; // scale to reduce compuation time for sparsely sampled spaces
-                for(int k =0; k<steps; k++){
-                    // test for collision along edge
-                    Eigen::VectorXd interp = nodes[i] + (nodes[j]-nodes[i])*(k/(double)steps);
+                const double collision_check_resolution = 0.1; // Fixed step size
+
+                double edge_length = (nodes[i] - nodes[j]).norm();
+
+                int steps = std::max(2, (int)std::ceil(edge_length / collision_check_resolution));
+                // DEBUG: Uncomment to see what's happening on first few edges
+
+                //if (edge_created < 5) {
+                //     debugEdgeCollision(nodes[i], nodes[j], cspace);
+                //}
+
+                for(int k = 0; k <= steps; k++){ 
+                    double t = (double)k / (double)steps;
+                    Eigen::VectorXd interp = nodes[i] + (nodes[j]-nodes[i])*t;
                     if (cspace.inCollision(interp)) {
                         collision_free = false;
                         break;
@@ -360,7 +442,42 @@ amp::Path genericPRM::plan(
             }
         }
     }
-    std::cout << "[DEBUG] Edges created: " << edge_created << std::endl;
+    //std::cout << "[DEBUG] Edges created: " << edge_created << std::endl;
+
+    // Use a larger radius for start/goal connections to ensure they get connected
+    auto connect_to_nearest = [&](int node_idx) {
+        int connections = 0;
+        double expanded_radius = connection_radius * 1.0; // Use larger radius for start/goal
+        
+        for (size_t i = 0; i < nodes.size(); i++) { 
+            if (i == (size_t)node_idx) continue; // Skip self
+            
+            double dist = (nodes[node_idx] - nodes[i]).norm();
+            if (dist <= expanded_radius) {
+                bool collision_free = true;
+                int steps = num_samples*0.5;
+                for(int k = 0; k < steps; k++){
+                    Eigen::VectorXd interp = nodes[node_idx] + (nodes[i]-nodes[node_idx])*(k/(double)steps);
+                    if (cspace.inCollision(interp)) {
+                        collision_free = false;
+                        break;
+                    }
+                }
+                
+                if (collision_free) {
+                    graph_prm->connect((uint32_t)node_idx, (uint32_t)i, dist);
+                    graph_prm->connect((uint32_t)i, (uint32_t)node_idx, dist);
+                    connections++;
+                    edge_created++;
+                }
+            }
+        }
+        //std::cout << "[DEBUG] Connected node " << node_idx << " to " << connections << " nodes" << std::endl;
+    };
+
+    connect_to_nearest(0); // connect start
+    connect_to_nearest(1); // connect goal
+    //std::cout << "[DEBUG] Total edges after start/goal connection: " << edge_created << std::endl;
 
         
 
@@ -384,24 +501,59 @@ amp::Path genericPRM::plan(
     MyAStarAlgo::GraphSearchResult Astar_result = algo.search(prm_problem, euclidHeuristic);
 
     // 4. reconstruct path
-    std::list<amp::Node> node_path = Astar_result.node_path;
+    // Fix 1: In genericPRM::plan, after A* search:
     if (Astar_result.success) {
+        //std::cout << "[DEBUG] A* found path with " << Astar_result.node_path.size() << " nodes" << std::endl;
         for (const amp::Node& n : Astar_result.node_path) {
-            path.waypoints.push_back(nodes[n]);  // map node index to configuration
+            path.waypoints.push_back(nodes[n]);
         }
+        
+        // ONLY do path smoothing if we actually have waypoints
+        
+        smooth = 1;
+        if(smooth && !path.waypoints.empty()) {
+            int smoothPasses = 1000;
+            //std::cout << "[DEBUG] Starting Path Smoothing" << std::endl;
+            //std::cout << "[DEBUG] Number of waypoints before smoothing: " << (int)path.waypoints.size() << std::endl;
+            
+            for(int pass = 0; pass < smoothPasses; pass++) {
+                int n = (int)path.waypoints.size();
+                if (n < 3) break;  // Need at least 3 waypoints to smooth
+                
+                int i = rand() % (n - 1);
+                int j = i + 1 + rand() % (n - i - 1);
+                
+                const Eigen::Vector2d& q_i = path.waypoints[i];
+                const Eigen::Vector2d& q_j = path.waypoints[j];
+
+                bool collision_free = true;
+                const double resolution = 0.2;
+                double dist = (q_j - q_i).norm();
+                int steps = std::max(2, (int)std::ceil(dist / resolution));
+
+                for (int k = 0; k <= steps; k++) {
+                    double t = (double)k / (double)steps;
+                    Eigen::Vector2d interp = q_i + t * (q_j - q_i);
+                    if (cspace.inCollision(interp)) {
+                        collision_free = false;
+                        break;
+                    }
+                }
+                
+                if (collision_free && (j > i + 1)) {
+                    path.waypoints.erase(path.waypoints.begin() + i + 1,
+                                        path.waypoints.begin() + j);
+                }
+            }
+            //std::cout << "[DEBUG] Smoothing complete. Final waypoint count: "
+            //        << path.waypoints.size() << std::endl;
+        }
+        
+
     } else {
-        std::cerr << "PRM: no path found!" << std::endl;
+        //std::cerr << "[ERROR] PRM: A* search failed! Returning empty path." << std::endl;
+        // path is already empty, just return it
     }
-    // TODO: TOGGLEABLE PATH SMOOTHING
-    bool smooth = 0;
-    
-    if(smooth){
-        // implement path smoothing
-
-        // try smooth 1
-
-    }
-
 
     return path;
 }
