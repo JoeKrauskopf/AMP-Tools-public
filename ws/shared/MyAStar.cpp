@@ -104,3 +104,4 @@ MyAStarAlgo::GraphSearchResult MyAStarAlgo::search(const amp::ShortestPathProble
     }
     return result;
 }
+

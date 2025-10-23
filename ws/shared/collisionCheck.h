@@ -20,6 +20,8 @@ public:
     Check collisionCheck(const Eigen::Vector2d& q, const amp::Polygon& obstacle);
     Result collisionCheckAll(const Eigen::Vector2d& q, const amp::Problem2D& problem);
     Result collisionCheckAllEnv(const Eigen::Vector2d& q, const amp::Environment2D& env);
+    Check collisionCheckDiskAgent(const Eigen::Vector2d& q, const double radius, const amp::Polygon& obstacle);
+    Result collisionCheckDiskAgentAllEnv(const Eigen::Vector2d& q, const double radius, const amp::Environment2D& env);
 
 private:
     bool collisionDetected = false;

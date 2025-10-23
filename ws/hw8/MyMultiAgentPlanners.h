@@ -11,13 +11,25 @@
 #include "MySamplingBasedPlanners.h" 
 
 
+
 class MyCentralPlanner : public amp::CentralizedMultiAgentRRT {
     public:
         virtual amp::MultiAgentPath2D plan(const amp::MultiAgentProblem2D& problem) override; 
+        size_t getTreeSize() const {
+            return rrt_tree.rrt_nodes.size();
+        }
+    private:
+        MyRRT rrt_tree;
 };
 
 
-class MyDecentralPlanner : public amp::DecentralizedMultiAgentRRT {
+class MyDecentralPlanner : public MyRRT, public amp::DecentralizedMultiAgentRRT {
     public:
         virtual amp::MultiAgentPath2D plan(const amp::MultiAgentProblem2D& problem) override;
+        size_t getTreeSize() const {
+            return rrt_tree.rrt_nodes.size();
+        }
+    
+    private:
+        MyRRT rrt_tree;
 };

@@ -69,3 +69,66 @@ collision::Result collision::collisionCheckAllEnv(const Eigen::Vector2d& q, cons
     }
     return {false, -1, -1};
 }
+
+collision::Check collision::collisionCheckDiskAgent(const Eigen::Vector2d& q, const double radius, const amp::Polygon& obstacle) {
+    // NEED TO CHANGE FOR COLLISION WITH RADIUS
+    const auto& vertices = obstacle.verticesCCW();
+    int n = static_cast<int>(vertices.size());
+    double xq = q(0); // point X
+    double yq = q(1); // point Y
+    int crossings = 0;
+    int edgeIdx = -1;
+
+    for (int i = 0; i < n; ++i) {
+        const Eigen::Vector2d& v1 = vertices[i];
+        const Eigen::Vector2d& v2 = vertices[(i + 1) % n];
+
+        // Compute projection of q onto the edge (v1-v2)
+        Eigen::Vector2d edge = v2 - v1;
+        Eigen::Vector2d v1ToQ = q - v1;
+        double t = v1ToQ.dot(edge) / edge.squaredNorm();
+        t = std::clamp(t, 0.0, 1.0);
+
+        // Closest point on edge
+        Eigen::Vector2d closest = v1 + t * edge;
+
+        // Distance from q to edge
+        double dist = (q - closest).norm();
+        if (dist <= radius + 1e-3) {
+            collisionDetected = true;
+            edgeIdx = i;
+            return {collisionDetected, edgeIdx};
+        }
+    }
+
+
+        // ---- Ray casting ----
+    for (int i = 0; i < n; ++i) {
+        const Eigen::Vector2d& v1 = vertices[i];
+        const Eigen::Vector2d& v2 = vertices[(i + 1) % n];
+
+        bool condY = (v1.y() > yq) != (v2.y() > yq);
+        if (condY) {
+            double xIntersection = v1.x() + (yq - v1.y()) * (v2.x() - v1.x()) / (v2.y() - v1.y());
+            if (xIntersection > xq) {
+                crossings++;
+            }
+        }
+    }
+
+    // Odd number of crossings → inside polygon
+    collisionDetected = (crossings % 2 == 1);
+    return {collisionDetected, edgeIdx};
+}
+
+collision::Result collision::collisionCheckDiskAgentAllEnv(const Eigen::Vector2d& q, const double radius, const amp::Environment2D& env) {
+    int n = env.obstacles.size(); // number of obstacles in the workspace
+    for (int j = 0; j < n; j++) {
+        const amp::Polygon& obst = env.obstacles[j];
+        collision::Check check = collisionCheckDiskAgent(q, radius, obst);
+        if (check.hit) {
+            return {true, j, check.edgeHit};
+        }
+    }
+    return {false, -1, -1};
+}
