@@ -11,7 +11,7 @@ amp::MultiAgentPath2D MyCentralPlanner::plan(const amp::MultiAgentProblem2D& pro
 
 
     // add a way of scaling rrt parameters based on the multiagent problem (num agents)
-    int base_iterations = 7500;    // iterations for 1 agent // 5000 WORKS FOR 1-6 AGENTS ~64/100 BENCHMARKS
+    int base_iterations = max_iter;    // iterations for 1 agent // 5000 WORKS FOR 1-6 AGENTS ~64/100 BENCHMARKS
     int n_agents = problem.agent_properties.size();
 
     // exponential scaling
@@ -51,15 +51,20 @@ amp::MultiAgentPath2D MyDecentralPlanner::plan(const amp::MultiAgentProblem2D& p
     std::vector<std::vector<Eigen::Vector2d>> collision_states;
     int maxAttempts = 10000;
     int attempt = 0;
+
+    double elapsed_ms = 0.0;                     // Reset elapsed time
+    
+
     // choose priority based decoupled approach
     while(!isValid) {
         std::cout << "Attempt: " << attempt << " of " << maxAttempts << std::endl;
         // assume every agent moves from qi to qj in 1 second
+        amp::Timer timer("MultiRRT_Benchmark"); // Start timer
     
         // put agents into a priority queue based on path lengths (shortest first)
         std::vector<std::pair<int,double>> agent_priority; // (index, distance)
         int n_agents = problem.agent_properties.size();
-        int base_iterations = 7500;    // iterations for 1 agent
+        int base_iterations = max_iter;    // iterations for 1 agent
 
         std::cout << "[DEBUG] Num Agents: " << problem.agent_properties.size() << std::endl;
         if(attempt == 0) {
@@ -69,6 +74,9 @@ amp::MultiAgentPath2D MyDecentralPlanner::plan(const amp::MultiAgentProblem2D& p
                 double dist = (problem.agent_properties[i].q_goal - problem.agent_properties[i].q_init).norm();
                 agent_priority.push_back({i, dist});
             }
+            // sort shortest first
+            std::sort(agent_priority.begin(), agent_priority.end(),
+                    [](const auto& a, const auto& b){ return a.second < b.second; });
         } else{
             // randomize order
             agent_priority.clear();
@@ -83,9 +91,7 @@ amp::MultiAgentPath2D MyDecentralPlanner::plan(const amp::MultiAgentProblem2D& p
         }
         
 
-        // sort shortest first
-        std::sort(agent_priority.begin(), agent_priority.end(),
-                [](const auto& a, const auto& b){ return a.second < b.second; });
+        
 
         // first gamma is empty
         MyRRT::Gamma gamma_prev;
@@ -111,15 +117,10 @@ amp::MultiAgentPath2D MyDecentralPlanner::plan(const amp::MultiAgentProblem2D& p
             amp::Path2D agent_path = rrt_tree.planMultiDeCoupled(problem, gamma_prev, agent_idx);
 
 
-            // Time parameterize the path
-            double path_duration = agent_path.waypoints.size(); // 1 sec per waypoint
-            gamma_prev.elapsedTime += path_duration;
-            gamma_prev.path.waypoints.insert(
-                gamma_prev.path.waypoints.end(),
-                agent_path.waypoints.begin(),
-                agent_path.waypoints.end()
-            );
-
+            // Only append new waypoints for the current agent
+            gamma_prev.agent_paths.push_back(agent_path); 
+            gamma_prev.elapsedTime += agent_path.waypoints.size(); // or duration if time-parametrized
+            gamma_prev.agent_idx.push_back(agent_idx);
 
             // Store agent path
             tmp_paths[agent_idx] = agent_path;  // store in correct slot
@@ -130,6 +131,12 @@ amp::MultiAgentPath2D MyDecentralPlanner::plan(const amp::MultiAgentProblem2D& p
          
         // now check path
         isValid = amp::HW8::check(path, problem, collision_states);
+        if (isValid) {
+            // Record elapsed time for successful run only
+            last_elapsed_ms = timer.now(amp::TimeUnit::ms);
+            std::cout << "[INFO] Planner succeeded in " << elapsed_ms << " ms." << std::endl;
+            break;
+        }
         // iterate attempts
         if(attempt >= maxAttempts){
             std::cout << "[WRN] Failed to find valid path after " << maxAttempts << " attempts." << std::endl;

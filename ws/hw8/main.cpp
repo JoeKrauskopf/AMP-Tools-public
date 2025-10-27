@@ -80,7 +80,7 @@ int main(int argc, char** argv) {
     LOG("STARTING BENCHMARKING");
 
     bool coupleBench = 0;
-    bool decoupleBench = 0;
+    bool decoupleBench = 1;
     int numBenchmarks = 100;
     struct MultiAgentBenchmarkResult {
         std::string label;
@@ -110,16 +110,19 @@ int main(int argc, char** argv) {
         if (coupleBench) {
             for (int i = 0; i < numBenchmarks; ++i) {
                 MyCentralPlanner central_planner;
-
+               
                 amp::Timer timer("MultiRRT_Benchmark");
+
                 amp::MultiAgentPath2D pathBench = central_planner.plan(problemBench);
+
                 double elapsed_ms = timer.now(amp::TimeUnit::ms);
                 
-                /*
-                if (elapsed_ms < 0.0 || elapsed_ms > 5000.0) {
-                    elapsed_ms = compTimesCentral.empty() ? 0.0 : compTimesCentral.back();
+                
+                
+                if (elapsed_ms < 0.0) {
+                    elapsed_ms = compTimesCentral.back();
                 }
-                */
+                
 
                 compTimesCentral.push_back(elapsed_ms);
                 treeSizesCentral.push_back(central_planner.getTreeSize());
@@ -146,15 +149,10 @@ int main(int argc, char** argv) {
             for (int i = 0; i < numBenchmarks; ++i) {
                 MyDecentralPlanner decentral_planner;
 
-                amp::Timer timer("MultiRRT_Benchmark");
+                // Planner run (elapsed_ms returned only if successful)
                 amp::MultiAgentPath2D pathBench = decentral_planner.plan(problemBench);
-                double elapsed_ms = timer.now(amp::TimeUnit::ms);
-                /*
-                if (elapsed_ms < 0.0 || elapsed_ms > 5000.0) {
-                    elapsed_ms = compTimesDecentral.empty() ? 0.0 : compTimesDecentral.back();
-                }
-                */
-
+                double elapsed_ms = decentral_planner.getLastElapsedMs();
+                // Record only successful run times
                 compTimesDecentral.push_back(elapsed_ms);
                 treeSizesDecentral.push_back(decentral_planner.getTreeSize());
 
@@ -164,19 +162,18 @@ int main(int argc, char** argv) {
                     << " | Valid path: " << (!pathBench.agent_paths.empty()));
             }
 
-            // Boxplots for decentralized planner
+            // Boxplots
             std::list<std::vector<double>> compTimesData = {compTimesDecentral};
             std::list<std::vector<double>> treeSizesData = {std::vector<double>(treeSizesDecentral.begin(), treeSizesDecentral.end())};
-            
             std::vector<std::string> labels = {"Decoupled RRT (" + std::to_string(num_agents) + " agents)"};
 
             LOG("FINISHED RUNS NOW PLOTTING");
 
             Visualizer::makeBoxPlot(compTimesData, labels, "Computation Time (ms)", "Planner", "Time (ms)");
             Visualizer::makeBoxPlot(treeSizesData, labels, "Tree Size", "Planner", "Number of Nodes");
+
             compTimesDecentralAll.push_back(compTimesDecentral);
             treeSizesDecentralAll.push_back(std::vector<double>(treeSizesDecentral.begin(), treeSizesDecentral.end()));
-    
         }
         labelsAll.push_back(std::to_string(num_agents) + " agents");
 
@@ -223,6 +220,13 @@ int main(int argc, char** argv) {
 
     // Visualize and grade methods
     Visualizer::saveFigures();
-    //HW8::grade<MyCentralPlanner, MyDecentralPlanner>("joseph.krauskopf@colorado.edu", argc, argv, std::make_tuple(), std::make_tuple());
+    bool grade = false;
+    if(grade) {
+        //MyCentralPlanner.max_iter = 10000;
+        //MyDecentralPlanner.max_iter = 40000;
+
+        HW8::grade<MyCentralPlanner, MyDecentralPlanner>("joseph.krauskopf@colorado.edu", argc, argv, std::make_tuple(), std::make_tuple());
+
+    }
     return 0;
 }

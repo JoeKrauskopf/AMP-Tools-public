@@ -632,7 +632,8 @@ amp::Path2D MyRRT::planMultiDeCoupled(const amp::MultiAgentProblem2D& problem, c
     const Eigen::Vector2d single_problem_goal = agent.q_goal;
     double radiusAgent = problem.agent_properties[agent_idx].radius; // assume all agents have the same radius
     // initialize tree
-    std::vector<Eigen::Vector2d> nodes;
+    //std::vector<Eigen::Vector2d> nodes;
+    std::vector<RRTNode> nodes;
     std::shared_ptr<amp::Graph<double>> T = std::make_shared<amp::Graph<double>>();
     std::vector<int> parents;
 
@@ -662,7 +663,7 @@ amp::Path2D MyRRT::planMultiDeCoupled(const amp::MultiAgentProblem2D& problem, c
         int nearest = 0;
         double best_dist = std::numeric_limits<double>::infinity();
         for (int i = 0; i < (int)nodes.size(); i++) {
-            double d = (nodes[i] - q).norm();
+            double d = (nodes[i].pos - q).norm();
             if (d < best_dist) {
                 best_dist = d;
                 nearest = i;
@@ -671,49 +672,72 @@ amp::Path2D MyRRT::planMultiDeCoupled(const amp::MultiAgentProblem2D& problem, c
         return nearest;
     };
 
-    auto steer = [&](const Eigen::Vector2d& from, const Eigen::Vector2d& to) -> Eigen::Vector2d {
-        Eigen::Vector2d diff = to - from;
+    auto steer = [&](const RRTNode& from, const Eigen::Vector2d& to) -> RRTNode {
+        Eigen::Vector2d diff = to - from.pos;
         double dist = diff.norm();
-        if (dist < step_size) return to;
-        return from + diff * (step_size / dist);
+        Eigen::Vector2d new_pos = (dist < step_size) ? to : from.pos + diff * (step_size / dist);
+        double new_time = from.t + (new_pos - from.pos).norm() / 1.0; // time update
+        return {new_pos, new_time, -1}; // parent_idx set later
     };
 
 
-    auto collidesWithPreviousAgents = [&](const Eigen::Vector2d& pos, double time, const Gamma& gamma_prev, double agent_radius) -> bool {
-        for (size_t k = 0; k < gamma_prev.path.waypoints.size(); ++k) {
-            double wp_time = static_cast<double>(k); // 1 sec per waypoint assumption
-            
-            if (std::abs(wp_time - time) > 2.0) continue; // only check nearby times (tunable)
+    auto collidesWithPreviousAgents = [&](const Eigen::Vector2d& pos,
+                                      int waypointNum,
+                                      const Gamma& gamma_prev,
+                                      double agent_radius) -> bool {
+        double safety_margin = 0.1;
+        // Check each previous agent
+        for (const auto& prev_agent_path : gamma_prev.agent_paths) {
+            if (prev_agent_path.waypoints.empty()) continue;
 
-            const Eigen::Vector2d& prev_wp = gamma_prev.path.waypoints[k];
-            double dist = (pos - prev_wp).norm();
-            if (dist < 1.5 * agent_radius) return true;
+            // Clamp index to last waypoint if needed
+            int idx = waypointNum;
+            if (idx < 0) idx = 0;
+            if (idx >= prev_agent_path.waypoints.size())
+                idx = static_cast<int>(prev_agent_path.waypoints.size() - 1);
+
+            const Eigen::Vector2d& prev_pos = prev_agent_path.waypoints[idx];
+
+            double dist = (pos - prev_pos).norm();
+            if (dist < (2.0 * agent_radius + safety_margin)) {
+                return true; // collision detected
+            }
         }
+
         return false;
     };
 
-    auto edge_collision_free = [&](const Eigen::Vector2d& a, const Eigen::Vector2d& b, const Gamma& gamma_prev, const amp::Environment2D workspace) -> bool {
+    auto edge_collision_free = [&](const RRTNode& a, const RRTNode& b, const Gamma& gamma_prev, const amp::Environment2D& workspace) -> bool {
         collision coll;
-        const double edge_resolution = 0.2; // resolution for sampling along the spatial segment
-        double edge_len = (b - a).norm();
-        int steps = std::max(2, (int)std::ceil(edge_len / edge_resolution));
-
-        // choose a travel_time for this edge (units = seconds)
-        // simplest: 1.0 seconds per unit length (tunable), or use edge_len / speed
-        double travel_time = std::max(1e-6, edge_len); // e.g. travel_time = edge_len (1 unit/sec)
-        double t_start = gamma_prev.elapsedTime; // when this edge would start, relative to gamma_prev
+        double edge_len = (b.pos - a.pos).norm();
+        int steps = std::max(2, (int)std::ceil(edge_len / 0.2));
 
         for (int i = 0; i <= steps; ++i) {
-            double alpha = static_cast<double>(i) / static_cast<double>(steps); // in [0,1]
-            Eigen::Vector2d interp = a + alpha * (b - a);                        // correct spatial interp
-            double time = t_start + alpha * travel_time;                         // corresponding time along edge
+            double alpha = static_cast<double>(i) / steps;
+            Eigen::Vector2d interp_pos = a.pos + alpha * (b.pos - a.pos);
+            double interp_time = a.t + alpha * (b.t - a.t);
 
-            // check environment collision using disk agent
-            collision::Result res = coll.collisionCheckDiskAgentAllEnv(interp, radiusAgent, workspace);
-            if (res.hit) return false;
+            // Environment collision
+            if (coll.collisionCheckDiskAgentAllEnv(interp_pos, radiusAgent, workspace).hit)
+                return false;
 
-            // check collisions with previous agents in space-time (conservative)
-            //if (collidesWithPreviousAgents(interp, time, gamma_prev, radiusAgent)) return false;
+            // Check previous agents
+            for (size_t k = 0; k < gamma_prev.agent_paths.size(); ++k) {
+                const auto& prev_path = gamma_prev.agent_paths[k];
+                if (prev_path.waypoints.empty()) continue;
+
+                // Map time to previous agent's path
+                double t_prev = interp_time;
+                int idx0 = std::floor(t_prev);
+                int idx1 = std::min(idx0 + 1, static_cast<int>(prev_path.waypoints.size() - 1));
+                double t = t_prev - idx0;
+
+                Eigen::Vector2d prev_pos = (1.0 - t) * prev_path.waypoints[idx0] + t * prev_path.waypoints[idx1];
+                double prev_radius = problem.agent_properties[gamma_prev.agent_idx[k]].radius;
+
+                if ((interp_pos - prev_pos).norm() < (1.3*radiusAgent + 1.3*prev_radius +0.1))
+                    return false;
+            }
         }
         return true;
     };
@@ -723,10 +747,10 @@ amp::Path2D MyRRT::planMultiDeCoupled(const amp::MultiAgentProblem2D& problem, c
 
 
     // create root at q_init
-    nodes.push_back(single_problem_init);
+    nodes.push_back({single_problem_init, 0.0, -1});
     rrt_nodes.push_back(single_problem_init);  // Sync with rrt_nodes
     parents.push_back(-1);
-
+    int waypointNum = 0;
 
     // while not solution found:
     for (int i = 0; i<max_iterations; i++){
@@ -745,39 +769,61 @@ amp::Path2D MyRRT::planMultiDeCoupled(const amp::MultiAgentProblem2D& problem, c
         //std::cout << "[DEBUG] q_rand: " << q_rand.transpose() << std::endl;
 
         // q_near <- nearest configuration to T to q_rand wrt rho
+        //int near = nearest_index(q_rand);
+        //Eigen::Vector2d q_near = nodes[near];
         int near = nearest_index(q_rand);
-        Eigen::Vector2d q_near = nodes[near];
+        RRTNode q_near_node = nodes[nearest_index(q_rand)];
+
 
         //std::cout << "[DEBUG] q_near: " << q_near.transpose() << std::endl;
 
         // path <- generate path from q_near to q_rand
 
         // steer
-        Eigen::Vector2d q_new = steer(q_near, q_rand);
+        //Eigen::Vector2d q_new = steer(q_near, q_rand);
+        RRTNode q_new_node = steer(q_near_node, q_rand);
 
         // collision check
-        if (edge_collision_free(q_near, q_new, gamma_prev, workspace)){
+        if (edge_collision_free(q_near_node, q_new_node, gamma_prev, workspace)){
 
             // add q_new to tree
-            rrt_nodes.push_back(q_new);
-            nodes.push_back(q_new);
+            rrt_nodes.push_back(q_new_node.pos);
+            //nodes.push_back(q_new);
             parents.push_back(near);
+            q_new_node.parent_idx = nearest_index(q_rand);
+            nodes.push_back(q_new_node);
             int new_idx = static_cast<int>(nodes.size() - 1);
             
             // add edges to rrt_graph only
-            double w = (q_new - q_near).norm();
+            double w = (q_new_node.pos - q_near_node.pos).norm();
             rrt_graph->connect((uint32_t)near, (uint32_t)new_idx, w);
             rrt_graph->connect((uint32_t)new_idx, (uint32_t)near, w);
 
-            if ((q_new - single_problem_goal).norm() <= epsilon) {
-                if (edge_collision_free(q_new, single_problem_goal, gamma_prev, workspace)) {
+
+            // now set waypointNum as number of parents
+            if (rrt_graph->isReversible()) {
+                waypointNum = static_cast<int>(rrt_graph->parents(new_idx).size());
+            } else {
+                // fallback: just count the nearest you connected
+                waypointNum = 1;
+            }
+            double dist = (q_new_node.pos - single_problem_goal).norm();
+            double goal_time = q_new_node.t + dist / 1;  // assuming constant agent speed
+
+            RRTNode goal_node = {single_problem_goal, goal_time, new_idx};
+
+
+            if ((q_new_node.pos - goal_node.pos).norm() <= epsilon) {
+                if (edge_collision_free(q_new_node, goal_node, gamma_prev, workspace)) {
                     std::cout << "[DEBUG] Goal Found!" << std::endl;
-                    nodes.push_back(single_problem_goal);
+                    //nodes.push_back(single_problem_goal);
+                    
+                    nodes.push_back(goal_node);
                     rrt_nodes.push_back(single_problem_goal);  // Sync with rrt_nodes
                     parents.push_back(new_idx);
                     goal_idx = static_cast<int>(nodes.size() - 1);
                     
-                    double w2 = (single_problem_goal - q_new).norm();
+                    double w2 = (single_problem_goal - q_new_node.pos).norm();
                     rrt_graph->connect((uint32_t)new_idx, (uint32_t)goal_idx, w2);
                     rrt_graph->connect((uint32_t)goal_idx, (uint32_t)new_idx, w2);
 
@@ -809,7 +855,7 @@ amp::Path2D MyRRT::planMultiDeCoupled(const amp::MultiAgentProblem2D& problem, c
 
     std::unordered_map<amp::Node, Eigen::VectorXd> nodeStates;
     for (size_t i = 0; i < nodes.size(); i++) {
-        nodeStates[i] = nodes[i];
+        nodeStates[i] = nodes[i].pos;
     }
     //EuclideanHeuristic euclidHeuristic(problem.q_goal, nodeStates);
     amp::SearchHeuristic zeroHeuristic;
@@ -822,68 +868,94 @@ amp::Path2D MyRRT::planMultiDeCoupled(const amp::MultiAgentProblem2D& problem, c
     std::list<amp::Node> node_path = Astar_result.node_path;
     if (Astar_result.success) {
         for (const amp::Node& n : Astar_result.node_path) {
-            path.waypoints.push_back(nodes[n]);
+            path.waypoints.push_back(nodes[n].pos);
         }
     } else {
         std::cerr << "RRT: no path found!" << std::endl;
     }
 
     // 5. temporal post-processing
-    std::cout << "[DEBUG] Starting temporal collision post-processing" << std::endl;
+    bool temporalPP = false;
+    if(temporalPP){
 
-    if (gamma_prev.path.waypoints.empty()) {
-        std::cout << "[DEBUG] No previous agent path — skipping temporal check." << std::endl;
-        return path;
-    }
-
-    const double safety_dist = 5 * radiusAgent; // threshold for collision avoidance
-    amp::Path2D processed_path;
-    processed_path.waypoints.push_back(path.waypoints.front());
-
-    if (path.waypoints.empty()) {
-        std::cerr << "[WARN] Empty path, skipping post-processing.\n";
-        return path;
-    }
-
-    size_t i = 1;
-    size_t j = 0;
-    size_t prev_size = gamma_prev.path.waypoints.size();
-    const size_t max_wait_steps = 50; // prevent runaway memory growth
-
-    while (i < path.waypoints.size()) {
-        Eigen::Vector2d current_pos = path.waypoints[i];
-        Eigen::Vector2d last_pos = processed_path.waypoints.back();
-
-        Eigen::Vector2d prev_pos = (j < prev_size) ? gamma_prev.path.waypoints[j] : gamma_prev.path.waypoints.back();
-
-        double dist = (current_pos - prev_pos).norm();
-
-        if (dist < safety_dist) {
-            // Too close → wait one timestep
-            processed_path.waypoints.push_back(last_pos);
-
-            // increment previous agent index but clamp to last waypoint
-            if (j < prev_size - 1) j++;
-
-            // Optional: prevent infinite waiting
-            if (processed_path.waypoints.size() > path.waypoints.size() + max_wait_steps) {
-                std::cerr << "[WARN] Excessive waits, stopping post-processing to prevent crash." << std::endl;
-                break;
-            }
-        } else {
-            // Safe → move forward
-            processed_path.waypoints.push_back(current_pos);
-            i++;
-            if (j < prev_size - 1) j++;
+        
+        // Early exit if no prior agents
+        if (gamma_prev.agent_paths.empty()) {
+            std::cout << "[DEBUG] No previous agent paths — skipping temporal check." << std::endl;
+            return path;
         }
+
+        if (path.waypoints.empty()) {
+            std::cerr << "[WARN] Empty path, skipping post-processing.\n";
+            return path;
+        }
+
+        amp::Path2D processed_path;
+        processed_path.waypoints.push_back(path.waypoints.front());
+
+        const double safety_margin = 0.1;
+        const size_t max_wait_steps = 50;
+        size_t i = 1; // current agent waypoint index
+        double current_time = 0.0;
+        const double dt = 1.0; // each waypoint = 1 second
+
+        while (i < path.waypoints.size()) {
+            Eigen::Vector2d current_pos = path.waypoints[i];
+            Eigen::Vector2d last_pos = processed_path.waypoints.back();
+
+            bool too_close = false;
+
+            // Check against every previous agent’s path
+            for (size_t k = 0; k < gamma_prev.agent_paths.size(); ++k) {
+                const auto& prev_path = gamma_prev.agent_paths[k];
+                if (prev_path.waypoints.empty()) continue;
+
+                int prev_agent_id = gamma_prev.agent_idx[k];
+                double prev_radius = problem.agent_properties[prev_agent_id].radius;
+
+                // Map current_time to previous agent's path
+                double t_prev = current_time;
+                int idx0 = std::floor(t_prev);
+                int idx1 = std::min(idx0 + 1, static_cast<int>(prev_path.waypoints.size() - 1));
+                double t = t_prev - idx0;
+
+                // Interpolate previous agent position
+                Eigen::Vector2d prev_pos =
+                    (1.0 - t) * prev_path.waypoints[idx0] + t * prev_path.waypoints[idx1];
+
+                // Safety distance depends on both agent radii
+                double safety_dist = radiusAgent + prev_radius + safety_margin;
+
+                if ((current_pos - prev_pos).norm() < safety_dist) {
+                    too_close = true;
+                    break;
+                }
+            }
+
+            if (too_close) {
+                // Wait in place (agent pauses)
+                processed_path.waypoints.push_back(last_pos);
+                current_time += dt;
+
+                // Prevent runaway waiting
+                if (processed_path.waypoints.size() >
+                    path.waypoints.size() + max_wait_steps) {
+                    std::cerr << "[WARN] Excessive waits, stopping post-processing to prevent crash."
+                            << std::endl;
+                    break;
+                }
+            } else {
+                // Safe to move forward
+                processed_path.waypoints.push_back(current_pos);
+                i++;
+                current_time += dt;
+            }
+        }
+
+        // Apply processed (collision-free-in-time) path
+        path.waypoints = processed_path.waypoints;
     }
-
-    // Apply processed path
-    path.waypoints = processed_path.waypoints;
-    std::cout << "[DEBUG] Temporal post-processing done. Final path length = "
-            << path.waypoints.size() << std::endl;
-
-
+    
 
     return path;
 }

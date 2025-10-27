@@ -33,8 +33,16 @@ class MyRRT : public amp::GoalBiasRRT2D {
 
         struct Gamma
         {
-            amp::Path2D path;
+            // could be alterted to be nxm matrix
+            // each column is the waypoints of robot i
+            std::vector<amp::Path2D> agent_paths; // one Path2D per previous agent
+            std::vector<int> agent_idx;
             double elapsedTime;
+        };
+        struct RRTNode {
+            Eigen::Vector2d pos; // 2D position
+            double t;            // arrival time
+            int parent_idx;      // parent in the tree
         };
 
 

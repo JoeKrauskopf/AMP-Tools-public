@@ -18,6 +18,7 @@ class MyCentralPlanner : public amp::CentralizedMultiAgentRRT {
         size_t getTreeSize() const {
             return rrt_tree.rrt_nodes.size();
         }
+        int max_iter =7500;
     private:
         MyRRT rrt_tree;
 };
@@ -29,7 +30,11 @@ class MyDecentralPlanner : public MyRRT, public amp::DecentralizedMultiAgentRRT 
         size_t getTreeSize() const {
             return rrt_tree.rrt_nodes.size();
         }
+        // Optional: you can add a getter to access the last elapsed time
+        double getLastElapsedMs() const { return last_elapsed_ms; }
+        int max_iter = 7500;
     
     private:
         MyRRT rrt_tree;
+        double last_elapsed_ms = 0.0;
 };
