@@ -8,8 +8,8 @@
 namespace amp {
 
 struct AgentDimensions {
-    double length;
-    double width;
+    double length = 5;
+    double width = 2;
 };
 
 class DynamicAgent {

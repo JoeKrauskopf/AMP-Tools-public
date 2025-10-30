@@ -6,6 +6,7 @@
 // Include the correct homework headers
 #include "hw/HW6.h"
 
+
 class MyAStarAlgo : public amp::AStar {
     public:
         virtual GraphSearchResult search(const amp::ShortestPathProblem& problem, const amp::SearchHeuristic& heuristic) override;

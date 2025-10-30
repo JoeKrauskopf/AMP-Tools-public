@@ -22,6 +22,8 @@ public:
     Result collisionCheckAllEnv(const Eigen::Vector2d& q, const amp::Environment2D& env);
     Check collisionCheckDiskAgent(const Eigen::Vector2d& q, const double radius, const amp::Polygon& obstacle);
     Result collisionCheckDiskAgentAllEnv(const Eigen::Vector2d& q, const double radius, const amp::Environment2D& env);
+    Check collisionCheckDynamicAgent(const Eigen::Vector2d& q, const amp::DynamicAgent& agent, const double theta, const amp::Polygon& obstacle, const amp::Environment2D& env);
+    Result collisionCheckDynamicAgentAllEnv(const Eigen::Vector2d& q, const amp::DynamicAgent& agent, const double theta, const amp::Environment2D& env);
 
 private:
     bool collisionDetected = false;
