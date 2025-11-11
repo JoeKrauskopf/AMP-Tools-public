@@ -11,11 +11,13 @@
 class MyKinoRRT : public amp::KinodynamicRRT {
     public:
         virtual amp::KinoPath plan(const amp::KinodynamicProblem2D& problem, amp::DynamicAgent& agent) override;
-        int max_iterations = 100000;
-        double step_size = 0.5;
+        int max_iterations = 200000;
+        int max_attempts = 1;
+        double step_size = 1;
         double epsilon = 0.5; // goal tolerance
         double goalBias = 0.05; // goal bias
-        int max_controls = 10000;
+        int max_controls = 10;
+        const double dt = 0.001;
         
         struct RRTEdge {
             Eigen::VectorXd state;

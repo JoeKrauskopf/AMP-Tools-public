@@ -230,7 +230,8 @@ void MySimpleCar::propagate(Eigen::VectorXd& state, Eigen::VectorXd& control, do
         state += (dt / 6.0) * (k1 + 2*k2 + 2*k3 + k4);
        // state(4) = std::max(-M_PI_2, std::min(M_PI_2, state(4))); // wrap phi
         state(2) = angleWrap::wrap(state(2)); // wrap theta
-        state(4) = angleWrap::wrap(state(4)); // wrap theta
+        //state(4) = angleWrap::wrap(state(4)); // wrap theta
+        state(4) = std::max(-M_PI/4.0, std::min(M_PI/4.0, state(4))); // restrict phi to -pi/4 to pi/4
     }
 
 };
@@ -242,7 +243,7 @@ amp::KinoPath MyKinoRRT::plan(const amp::KinodynamicProblem2D& problem, amp::Dyn
     amp::KinoPath path;
     Eigen::VectorXd state = problem.q_init;
     collision coll;
-    bool debug = true;
+    bool debug = false;
 
     // add debug statements about the agent type and problem info
     if(debug) {
@@ -312,7 +313,7 @@ amp::KinoPath MyKinoRRT::plan(const amp::KinodynamicProblem2D& problem, amp::Dyn
     };
 
     // sample random time step within time step bounds
-    auto sampleDT = [&]() -> double {
+    auto sampleDuration = [&]() -> double {
         auto [dt_min, dt_max] = problem.dt_bounds;
         return dt_min + ((double)rand() / RAND_MAX) * (dt_max - dt_min);
     };
@@ -330,11 +331,14 @@ amp::KinoPath MyKinoRRT::plan(const amp::KinodynamicProblem2D& problem, amp::Dyn
     // rho(x_a, x_b): 
         // distance metric between states
     auto rho = [&](const Eigen::VectorXd& x_a, const Eigen::VectorXd& x_b) -> double {
-        double dist;
+        Eigen::VectorXd diff = x_a - x_b;
 
-        // L2 norm of vectors x_a and x_b
-        dist = (x_a - x_b).norm();
+        // Apply weights — emphasize position (indices 0–2)
+        Eigen::VectorXd weights = Eigen::VectorXd::Ones(x_a.size());
+        weights.head(3).array() *= 5.0;  // give 5× more importance to x, y, θ
 
+        // Weighted L2 distance
+        double dist = (weights.array() * diff.array()).matrix().norm();
         return dist;
     };
 
@@ -357,8 +361,9 @@ amp::KinoPath MyKinoRRT::plan(const amp::KinodynamicProblem2D& problem, amp::Dyn
 
         if(problem.isPointAgent) {
             // can use our basic workspace checker
+            double r = 0.25; // radius of unicycle
 
-            collision::Result res = coll.collisionCheckAllEnv(q,static_cast<const amp::Environment2D&>(problem));
+            collision::Result res = coll.collisionCheckDiskAgentAllEnv(q, r, static_cast<const amp::Environment2D&>(problem));
             return res.hit;
         } else{
             // save for future implementation
@@ -432,42 +437,36 @@ amp::KinoPath MyKinoRRT::plan(const amp::KinodynamicProblem2D& problem, amp::Dyn
         const int numControls = max_controls;
         TrajectoryStep best_step;
         double best_dist = std::numeric_limits<double>::infinity();
-        int valid_controls = 0;
-        int collision_controls = 0;
 
-        for(int i = 0; i<numControls; i++){
+        for (int i = 0; i < numControls; i++) {
             Eigen::VectorXd u = sampleControl();
-            double dt = sampleDT();
-            Eigen::VectorXd x_new = x_near;
-            const int n_substeps = 1; // remove redundant edge checking
-            double sub_dt = dt / n_substeps;
+            double duration = sampleDuration();
+
+            Eigen::VectorXd x_temp = x_near;
             bool collision_free = true;
 
-            for(int k = 0; k< n_substeps; k++){
-                agent.propagate(x_new, u, sub_dt); // forward propagate 1 timestep
-                if(inCollision(x_new)) {
+            // Compute how many fixed integration steps to take
+            int num_steps = std::max(1, (int)std::round(duration / dt));
+
+            for (int step = 0; step < num_steps; step++) {
+                agent.propagate(x_temp, u, dt);
+                if (inCollision(x_temp) || !isStateValid(x_temp)) {
                     collision_free = false;
-                    collision_controls++;
                     break;
                 }
             }
 
-            if(collision_free){
-                valid_controls++;
-                double dist = rho(x_new, x_target);
+            if (collision_free) {
+                double dist = rho(x_temp, x_target);
                 if (dist < best_dist) {
                     best_dist = dist;
-                    best_step.state = x_new;
+                    best_step.state = x_temp;
                     best_step.control = u;
-                    best_step.dt = dt;
+                    best_step.dt = duration; // store total duration, not per-step dt
                 }
             }
         }
-        if(valid_controls == 0) {
-            //std::cout << "[DEBUG] generateLocalTrajectory: ALL " << numControls 
-                    //<< " controls caused collision!" << std::endl;
-        
-        }
+
         return best_step;
     };
 
@@ -499,9 +498,9 @@ amp::KinoPath MyKinoRRT::plan(const amp::KinodynamicProblem2D& problem, amp::Dyn
     }
 
     // RIGHT AFTER initial condition setup in plan():
-    std::cout << "[DEBUG] ===== COLLISION DIAGNOSIS =====" << std::endl;
-    std::cout << "[DEBUG] Initial state: " << x0.transpose() << std::endl;
-    std::cout << "[DEBUG] Initial state in collision: " << inCollision(x0) << std::endl;
+    //std::cout << "[DEBUG] ===== COLLISION DIAGNOSIS =====" << std::endl;
+    //std::cout << "[DEBUG] Initial state: " << x0.transpose() << std::endl;
+    //std::cout << "[DEBUG] Initial state in collision: " << inCollision(x0) << std::endl;
 
     const int n_state = x0.size(); // number of states
     int goal_idx = -1;
@@ -524,7 +523,7 @@ amp::KinoPath MyKinoRRT::plan(const amp::KinodynamicProblem2D& problem, amp::Dyn
     // **MAIN LOOP**
     for(int iter = 0; iter < max_iterations; iter++){
         //std::cout << "Iteration: " << iter << " Percent complete: " << (static_cast<double>(iter) / max_iterations) * 100.0 << "%" << std::endl;
-        if(iter % std::max(1, max_iterations / 100) == 0) {
+        if(iter % std::max(1, max_iterations / 10) == 0) {
             std::cout << "[DEBUG] Percent Complete: " << (static_cast<double>(iter) / max_iterations) * 100.0  << "%" << std::endl;
         }
 

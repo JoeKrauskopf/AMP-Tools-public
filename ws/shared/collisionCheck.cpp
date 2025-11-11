@@ -139,15 +139,17 @@ collision::Check collision::collisionCheckDynamicAgent(const Eigen::Vector2d& q,
     double L = agent.agent_dim.length;
     double W = agent.agent_dim.width;
 
+    double margin = 0.1;
+
     //std::cout << "[COLLISION] agent L and W: " << L << " " << W << std::endl;
     
     // Create the 4 corners of the rectangle centered at origin
     // Assuming the agent's center is at q and it's oriented along theta
     std::vector<Eigen::Vector2d> localCorners = {
-        Eigen::Vector2d(0, -W/2),  // back-left
-        Eigen::Vector2d(L, -W/2),   // front-left
-        Eigen::Vector2d(L, W/2),    // front-right
-        Eigen::Vector2d(0, W/2)    // back-right
+        Eigen::Vector2d(0 - margin, -W/2.0 - margin),  // back-left
+        Eigen::Vector2d(L + margin, -W/2.0 - margin),   // front-left
+        Eigen::Vector2d(L + margin, W/2.0 + margin),    // front-right
+        Eigen::Vector2d(0 - margin, W/2.0 + margin)    // back-right
     };
     
     // Rotation matrix
